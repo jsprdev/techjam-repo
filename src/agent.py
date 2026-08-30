@@ -49,6 +49,25 @@ class Agent:
         self.ranker = PriorRanker(self.catalog, self.config)
         self._sessions: dict[str, Slots] = {}
 
+    def set_config(self, config: Config) -> None:
+        """Adopt new tuning parameters without rebuilding the index.
+
+        The sweep harness runs many variants against one built index, and
+        reaching into `agent.ranker.config` from outside is fragile: the moment
+        a module starts caching a value from config, or a new component appears,
+        an external caller silently tunes nothing and the sweep reports a wrong
+        number. Propagation belongs here, next to the components.
+
+        Only safe for fields that do not change the index. Index-affecting
+        fields are listed in `evaluation/sweep.py:INDEX_FIELDS` and force a
+        rebuild instead.
+        """
+        self.config = config
+        self.retriever.config = config
+        self.ranker.config = config
+        # Live sessions keep the config they were reset with, which is correct:
+        # changing tuning mid-session would make a run uninterpretable.
+
     def reset(self, session_id: str, user_profile: dict) -> None:
         """Start a fresh session. MUST NEVER RAISE.
 

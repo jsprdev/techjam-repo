@@ -96,10 +96,9 @@ def run_one(
         agent = Agent(catalog_path, config)
         index_cache[key] = agent
     else:
-        # Reuse the built index but adopt the new tuning parameters.
-        agent.config = config
-        agent.ranker.config = config
-        agent.retriever.config = config
+        # Reuse the built index but adopt the new tuning parameters. Agent owns
+        # propagation so this cannot silently miss a component.
+        agent.set_config(config)
 
     SINK.clear()
     SINK.enable()
