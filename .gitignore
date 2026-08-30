@@ -1,0 +1,9 @@
+# Frozen competition data. Fetched via the participant kit, never committed.
+data/
+# Derived tables and caches produced by offline/ scripts.
+artifacts/
+
+__pycache__/
+*.pyc
+.venv/
+results.json
