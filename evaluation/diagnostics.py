@@ -118,7 +118,7 @@ def report(products: list[dict[str, Any]]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--catalog", default="data/catalog.jsonl", type=Path)
+    parser.add_argument("--catalog", default="techjam-conversational-search/data/catalog.jsonl", type=Path)
     args = parser.parse_args()
     report(list(load_catalog(args.catalog)))
 

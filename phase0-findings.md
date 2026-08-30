@@ -102,3 +102,58 @@ Not yet read. `docs/evaluation_config.json` and `docs/submission_rules.md` are i
 4. Attribute selection weighted by the coverage table above.
 5. LLM derivation only for `use_case` and soft attributes, and only if step 2 shows headroom that
    retrieval alone cannot reach.
+
+---
+
+# Update: recall ceiling measured, and the network policy
+
+## Recall ceiling. RESOLVED, and retrieval is not the bottleneck
+
+Plain TF-IDF over the concatenated product text (`evaluation/recall_ceiling.py`), scored against all
+200 public sessions:
+
+    query                      recall@1   recall@10   recall@100   recall@1000
+    turn 1 opening only            1.5%        4.5%        41.0%         94.5%
+    all constraints revealed      46.0%       67.0%        88.5%        100.0%
+
+Per scenario, with all constraints revealed:
+
+    boundary         n= 10   recall@10  80.0%
+    browsing         n= 80   recall@10  70.0%
+    intent_override  n= 30   recall@10  66.7%
+    buying           n= 80   recall@10  62.5%
+
+Read this carefully. At depth 1000 the ceiling is 100%. There is no recall problem to solve, and no
+case for dense embeddings or a vector index. The entire score sits in two places: how fast the agent
+extracts the customer's constraints, and how well it ranks the top 10 once it has them.
+
+For scale, a naive agent that somehow knew every constraint at turn 1 would score roughly
+`0.5(0.67) + 0.3(0.52) + 0.2(1.0) = 0.69` against a 0.107 baseline. The realistic target after a few
+turns of extraction is in the 0.5 to 0.65 band.
+
+## Asking costs nothing
+
+`evaluate` checks `recommendations` for a hit first, and only then calls `customer_reply` with
+`ask_attribute`. A turn can therefore carry a full top 10 **and** a question. There is no
+ask-versus-recommend tradeoff to trade off. Ask every turn, always return ten items, and the commit
+policy in spec 5.8 reduces to choosing which attribute to ask.
+
+## Network access may be disabled for official scoring
+
+`docs/submission_rules.md`, Model Policy: "For official final scoring, organizer policy may disable
+network access." The organiser also reserves the right to impose CPU, memory and timeout limits.
+
+Consequences:
+
+- The deterministic engine is not a fallback, it is the scoring system. Any LLM call must be optional
+  and off by default.
+- Model weights cannot be downloaded at runtime. Anything requiring a HuggingFace fetch is unsafe,
+  which independently rules out sentence-transformer embeddings.
+- The submission must state its network dependency explicitly. An honest "runs fully offline" is a
+  direct Feasibility argument, worth 15% of judging.
+
+## 10.5 Config and rules. RESOLVED
+
+`docs/evaluation_config.json` confirms the scoring weights (0.5 / 0.3 / 0.2), `top_k` 10, `max_turns`
+10, miss turn value 11, and exact `parent_asin` matching. `docs/submission_rules.md` adds the
+required interface, the output rules, the reproducibility bundle, and the model policy above.
