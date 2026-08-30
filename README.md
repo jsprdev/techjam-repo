@@ -14,7 +14,7 @@ official harness, against a 0.107 BM25 baseline. Runs fully offline with no LLM 
 | HitRate@10 | 0.855 | 0.50 | 0.125 |
 | MRR | 0.630 | 0.30 | 0.068 |
 | Efficiency | 0.674 | 0.20 | 0.119 |
-| MTTC | 4.27 | | 9.81 |
+| MTTC | 4.265 | | 9.81 |
 | **TechnicalScore** | **0.7511** | | **0.1067** |
 
 | scenario | n | hit@10 | mrr | mttc |

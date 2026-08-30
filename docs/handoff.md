@@ -32,7 +32,7 @@ Current per-scenario breakdown, all 200 through the official harness:
 **Boundary is now the weakest bucket at 0.600**, but it is only 10 sessions, so it is 5% of
 the score and mostly noise. Do not spend a day there.
 
-**MTTC 4.27 is the biggest remaining block.** Efficiency is 0.674 out of a possible 1.0,
+**MTTC 4.265 is the biggest remaining block.** Efficiency is 0.674 out of a possible 1.0,
 worth 0.20 of the score. Getting MTTC to 2.5 would add roughly 0.035. That is role 2.
 
 ## Rules that bind everyone
