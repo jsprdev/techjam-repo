@@ -95,3 +95,59 @@ def test_every_agent_turn_is_contract_legal(agent, profile):
     for turn in range(1, 11):
         result = agent.respond("contract-session", "I want a leather belt", turn, 10)
         assert response.violations(result) == [], f"turn {turn}: {response.violations(result)}"
+
+
+# -- edge cases the first pass of this file missed ---------------------------
+# Raised by an adversarial review of the module. Each one is a way a response
+# could reach the harness malformed while violations() called it legal.
+
+
+def test_non_finite_scores_are_never_emitted():
+    """NaN and Infinity serialise as bare NaN/Infinity, which json.loads on the
+    other side rejects. A whole turn would be discarded."""
+    built = response.build("x", None, [("B1", float("nan")), ("B2", float("inf"))])
+    assert response.violations(built) == []
+    assert "score" not in built["recommendations"][0]
+    json.dumps(built)  # would emit invalid JSON if a non-finite score survived
+
+
+def test_violations_flags_a_non_finite_score_it_did_not_build():
+    bad = {
+        "message": "x",
+        "ask_attribute": None,
+        "recommendations": [{"parent_asin": "B1", "score": float("inf")}],
+    }
+    assert any("not valid JSON" in problem for problem in response.violations(bad))
+
+
+def test_boolean_score_is_a_violation():
+    """bool subclasses int in Python; JSON Schema treats it as a distinct type."""
+    bad = {
+        "message": "x",
+        "ask_attribute": None,
+        "recommendations": [{"parent_asin": "B1", "score": True}],
+    }
+    assert any("must be a number" in problem for problem in response.violations(bad))
+
+
+def test_usage_present_but_null_is_a_violation():
+    """The contract makes usage optional, but when present it must be an object."""
+    bad = {"message": "x", "ask_attribute": None, "recommendations": [], "usage": None}
+    assert any("usage must be an object" in problem for problem in response.violations(bad))
+
+
+def test_usage_absent_entirely_is_legal():
+    assert response.violations({"message": "x", "ask_attribute": None, "recommendations": []}) == []
+
+
+def test_unhashable_ask_attribute_is_reported_not_raised():
+    """A validator that throws is worse than one that reports: the caller's
+    except block turns a diagnosable bug into a silent fallback."""
+    bad = {"message": "x", "ask_attribute": ["color"], "recommendations": []}
+    assert any("not in enum" in problem for problem in response.violations(bad))
+
+
+def test_a_list_pair_is_read_as_asin_and_score():
+    """(asin, score) survives a JSON round trip as a list, not a tuple."""
+    built = response.build("x", None, [["B1", 0.5]])
+    assert built["recommendations"] == [{"parent_asin": "B1", "score": 0.5}]

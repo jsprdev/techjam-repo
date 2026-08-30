@@ -16,7 +16,7 @@ role 3.
 
 ```bash
 pip install -r requirements.txt
-pytest                                  # 74 tests, ~2s
+pytest                                  # 81 tests, ~2s
 python evaluation/run_eval.py           # your baseline to beat, 160 train sessions
 ```
 
