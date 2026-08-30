@@ -5,10 +5,14 @@ evidence behind any claim you want to challenge.
 
 ## Where things stand
 
-The pipeline runs end to end through the official command and scores **0.5420** on all 200
+The pipeline runs end to end through the official command and scores **0.7511** on all 200
 public sessions against a 0.107 baseline, with placeholder modules in all three of your
 slots. That number is a starting line, not a result. It says the scaffolding is sound and
 the headroom is now measurable.
+
+It got there in two steps. The scaffold scored 0.5420 on its own. Then the sweep harness
+found that `weight_popularity`, shipped at 0.15, was badly undertuned. See the curve under
+role 3.
 
 ```bash
 pip install -r requirements.txt
@@ -16,18 +20,20 @@ pytest                                  # 63 tests, ~2s
 python evaluation/run_eval.py           # your baseline to beat, 160 train sessions
 ```
 
-Current per-scenario breakdown, train split:
+Current per-scenario breakdown, all 200 through the official harness:
 
 | scenario | n | hit@10 | mrr | mttc |
 | --- | --- | --- | --- | --- |
-| buying | 64 | 0.656 | 0.367 | 6.14 |
-| browsing | 64 | 0.625 | 0.378 | 6.66 |
-| intent_override | 24 | 0.708 | 0.484 | 6.38 |
-| boundary | 8 | 0.500 | 0.393 | 8.50 |
+| buying | 80 | 0.850 | 0.616 | 4.04 |
+| browsing | 80 | 0.875 | 0.604 | 4.10 |
+| intent_override | 30 | 0.900 | 0.768 | 4.87 |
+| boundary | 10 | 0.600 | 0.533 | 5.60 |
 
-**MTTC 6.5 is the weakest number in the system.** Efficiency is 0.456 out of a possible 1.0,
-worth 0.20 of the score, and every turn saved moves it. That is role 2's territory and it is
-where the cheapest points are.
+**Boundary is now the weakest bucket at 0.600**, but it is only 10 sessions, so it is 5% of
+the score and mostly noise. Do not spend a day there.
+
+**MTTC 4.27 is the biggest remaining block.** Efficiency is 0.674 out of a possible 1.0,
+worth 0.20 of the score. Getting MTTC to 2.5 would add roughly 0.035. That is role 2.
 
 ## Rules that bind everyone
 
@@ -107,8 +113,28 @@ Done when MTTC is below 4 and override sessions hit within two turns of the flip
 HitRate is 0.66 but MRR is 0.40, so the target is often in the ten and not at the top. That
 gap is your whole job.
 
-**Start with the sweep result below.** `weight_popularity` turned out to be the single
-highest-leverage constant in the system, and the current default is far too low.
+**The popularity prior is already swept, and it was the single highest-leverage constant in
+the system.** Full curve over the 160 train sessions:
+
+| weight_popularity | score | hit@10 | mrr | mttc |
+| --- | --- | --- | --- | --- |
+| 0.0 | 0.4608 | 0.550 | 0.366 | 7.21 |
+| 0.4 | 0.6313 | 0.787 | 0.402 | 5.16 |
+| 1.0 | 0.7244 | 0.844 | 0.577 | 4.53 |
+| 1.5 | **0.7435** | 0.850 | 0.625 | 4.46 |
+| 2.0 | 0.7401 | 0.850 | 0.611 | 4.41 |
+| 3.0 | 0.7391 | 0.856 | 0.595 | 4.38 |
+| 5.0 | 0.7176 | 0.831 | 0.578 | 4.57 |
+
+Unimodal, plateauing across 1.5 to 3.0. I set the default to **2.0**, the middle of the
+plateau rather than its exact argmax, because those three points differ by under 0.005 and
+picking the argmax on 160 sessions is fitting noise. It is marked PROVISIONAL in
+`config.py` and it is yours to confirm or override.
+
+I also checked it is not a metric-gaming artefact: `evaluation/check_degeneracy.py` shows
+five unrelated queries still return completely disjoint top tens even at weight 20, because
+the prior only reorders a shortlist retrieval has already filtered. Rerun it if you change
+how ranking composes.
 
 Features Phase 0 says are available and unused: exact phrase overlap between disclosed
 constraints and product text, category path agreement, `average_rating`, and price band.

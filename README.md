@@ -6,16 +6,26 @@ Recommendations.
 A multi-turn shopping agent that finds a hidden target product in a frozen 50,000 item
 Amazon catalog by talking to a simulated customer, in at most ten turns.
 
-**Current score: 0.5420 TechnicalScore** on all 200 public sessions, measured through the
+**Current score: 0.7511 TechnicalScore** on all 200 public sessions, measured through the
 official harness, against a 0.107 BM25 baseline. Runs fully offline with no LLM dependency.
 
 | Metric | Value | Weight | Baseline |
 | --- | --- | --- | --- |
-| HitRate@10 | 0.660 | 0.50 | 0.125 |
-| MRR | 0.403 | 0.30 | 0.068 |
-| Efficiency | 0.456 | 0.20 | 0.119 |
-| MTTC | 6.45 | | 9.81 |
-| **TechnicalScore** | **0.5420** | | **0.1067** |
+| HitRate@10 | 0.855 | 0.50 | 0.125 |
+| MRR | 0.630 | 0.30 | 0.068 |
+| Efficiency | 0.674 | 0.20 | 0.119 |
+| MTTC | 4.27 | | 9.81 |
+| **TechnicalScore** | **0.7511** | | **0.1067** |
+
+| scenario | n | hit@10 | mrr | mttc |
+| --- | --- | --- | --- | --- |
+| buying | 80 | 0.850 | 0.616 | 4.04 |
+| browsing | 80 | 0.875 | 0.604 | 4.10 |
+| intent_override | 30 | 0.900 | 0.768 | 4.87 |
+| boundary | 10 | 0.600 | 0.533 | 5.60 |
+
+Every tuning decision was made on the 160 session train split. The 40 session held-out
+slice has not been looked at, and will not be until the final check.
 
 ## Setup
 

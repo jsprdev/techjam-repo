@@ -55,7 +55,19 @@ class Config:
     # ---- ranking, role 3 ---------------------------------------------------
     # Priors blended into the final ordering. Popularity is a genuinely strong
     # baseline in leave-last-out Amazon benchmarks, so it earns real weight.
-    weight_popularity: float = 0.15
+    #
+    # PROVISIONAL, set by role 4 from a sweep, owned by role 3. Swept 0.0 to 5.0
+    # over the 160 train sessions (artifacts/sweep_popularity.json and
+    # sweep_pop_extended.json): the curve is unimodal, rising from 0.4608 at 0.0
+    # to a plateau of about 0.743 across 1.5 to 3.0, then falling to 0.7176 at
+    # 5.0. 2.0 is the middle of that plateau rather than its exact argmax,
+    # because 1.5, 2.0 and 3.0 differ by less than 0.005 and picking the argmax
+    # would be fitting noise on 160 sessions.
+    #
+    # It is not degenerate: evaluation/check_degeneracy.py shows unrelated
+    # queries still return completely disjoint top tens even at weight 20,
+    # because the prior only reorders a shortlist retrieval already filtered.
+    weight_popularity: float = 2.0
     weight_rating: float = 0.05
     # Shortlist depth handed to the reranker. Deeper costs latency for little
     # gain once recall@100 is already 88%.
