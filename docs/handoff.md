@@ -136,6 +136,31 @@ five unrelated queries still return completely disjoint top tens even at weight 
 the prior only reorders a shortlist retrieval has already filtered. Rerun it if you change
 how ranking composes.
 
+### `rerank_depth`: a trade-off I deliberately did not resolve
+
+Swept over the same 160 train sessions. Composite and MRR peak in different places.
+
+| rerank_depth | score | hit@10 | mrr | mttc |
+| --- | --- | --- | --- | --- |
+| 25 | 0.6216 | 0.681 | 0.604 | 6.01 |
+| 50 | 0.6899 | 0.769 | **0.621** | 5.03 |
+| 100 (shipped) | 0.7401 | 0.850 | 0.611 | 4.41 |
+| 200 | **0.7515** | 0.875 | 0.558 | 3.67 |
+| 400 | 0.7438 | 0.881 | 0.504 | 3.39 |
+
+Deeper reranking applies the popularity prior to more candidates, which pulls more plausible
+items into the top ten and shortens sessions, but pushes the exact target down *within* those
+ten. HitRate and MTTC improve while MRR degrades.
+
+**I left the default at 100.** Moving to 200 buys +0.011 composite, which is close to noise
+on 160 sessions, and costs 0.053 MRR, which is not. MRR is 30% of the score and it is yours,
+so the call is yours. Rerun with `--split train` after any ranking change, because the shape
+of this curve depends entirely on how ranking composes.
+
+Worth knowing when you decide: `rerank_depth` is capped in practice by the truncation width,
+which is 200 on the Buying track and 800 on Browsing, so a depth above 200 only affects
+Browsing turns.
+
 Features Phase 0 says are available and unused: exact phrase overlap between disclosed
 constraints and product text, category path agreement, `average_rating`, and price band.
 
