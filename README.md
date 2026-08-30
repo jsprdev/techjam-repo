@@ -64,7 +64,7 @@ python evaluation/sweep.py --grid weight_popularity=0.0,0.2,0.4 --limit 60
 python evaluation/verify_offline.py              # proves no network dependency
 python evaluation/diagnostics.py                 # catalog field and coverage audit
 python evaluation/recall_ceiling.py              # the retrieval ceiling
-pytest                                           # 65 tests, about two seconds
+pytest                                           # 63 tests, about two seconds
 ```
 
 ## How it works

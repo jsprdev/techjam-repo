@@ -12,7 +12,7 @@ the headroom is now measurable.
 
 ```bash
 pip install -r requirements.txt
-pytest                                  # 65 tests, ~2s
+pytest                                  # 63 tests, ~2s
 python evaluation/run_eval.py           # your baseline to beat, 160 train sessions
 ```
 
