@@ -16,7 +16,7 @@ role 3.
 
 ```bash
 pip install -r requirements.txt
-pytest                                  # 63 tests, ~2s
+pytest                                  # 74 tests, ~2s
 python evaluation/run_eval.py           # your baseline to beat, 160 train sessions
 ```
 
@@ -34,6 +34,18 @@ the score and mostly noise. Do not spend a day there.
 
 **MTTC 4.265 is the biggest remaining block.** Efficiency is 0.674 out of a possible 1.0,
 worth 0.20 of the score. Getting MTTC to 2.5 would add roughly 0.035. That is role 2.
+
+## One thing to know before you write a test
+
+`Agent.respond` wraps every turn in a blanket `except Exception` and degrades to a
+popularity-ordered guess. That is deliberate, since a raise forfeits the session, and it
+means **a test whose only assertion is "the response was well formed" passes on a completely
+dead pipeline**. Three of my own checks were vacuous for exactly this reason before an
+adversarial review caught them.
+
+So: use the `strict_agent` fixture for anything asserting your module works. It re-raises
+instead of degrading. Assert something the fallback cannot produce, such as a query-specific
+winner, rather than just contract legality. `tests/test_agent.py` has worked examples.
 
 ## Rules that bind everyone
 

@@ -72,9 +72,10 @@ Tuning and verification:
 ```bash
 python evaluation/sweep.py --grid weight_popularity=0.0,0.2,0.4 --limit 60
 python evaluation/verify_offline.py              # proves no network dependency
+python evaluation/check_degeneracy.py            # proves ranking still reads the query
 python evaluation/diagnostics.py                 # catalog field and coverage audit
 python evaluation/recall_ceiling.py              # the retrieval ceiling
-pytest                                           # 63 tests, about two seconds
+pytest                                           # 74 tests, about two seconds
 ```
 
 ## How it works
@@ -127,7 +128,25 @@ Required disclosures.
 | Token usage | 0 prompt, 0 completion, reported as such in `usage` |
 | Latency | 265 ms p95 per turn, 22 s one-off index build |
 | Memory | 876 MB peak across a 200 session run |
-| Network | Not required. Verified by `evaluation/verify_offline.py` |
+| Network | Not required. `evaluation/verify_offline.py` runs a ten turn session with every socket entry point poisoned, and is itself negative-controlled: injecting a real socket call makes it fail. |
+
+## On trusting these numbers
+
+Two habits, because a check that cannot fail is worse than no check: it reports
+success and stops anyone looking.
+
+The agent wraps each turn in a blanket exception handler, so a failed turn degrades to a
+popularity-ordered guess rather than forfeiting the session. That is right in production and
+it silently disarms any test whose only assertion is "the response was well formed", since
+the fallback is well formed too. Tests that assert the pipeline *works* therefore run under
+`Config.strict_errors`, which re-raises, and `tests/test_offline.py` signals with a
+`BaseException` the handler cannot catch. `test_a_dead_pipeline_is_actually_detected` guards
+that guard.
+
+Every claim of the form "X is verified" here has a negative control: we broke X on purpose
+and confirmed the check went red. `verify_offline.py` was checked by injecting a real socket
+call; `check_degeneracy.py` runs a deliberately query-blind ranker before it will report on
+the real one.
 
 ## Limitations
 
