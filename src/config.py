@@ -79,6 +79,13 @@ class Config:
     use_llm: bool = False
     llm_timeout_seconds: float = 8.0
 
+    # Re-raise instead of falling back to the popularity list when a turn
+    # fails. Production keeps this False, because a crash costs a whole session
+    # and a degraded answer still might hit. Tests and the offline probe set it
+    # True, because the blanket fallback otherwise makes them unfalsifiable: a
+    # completely dead pipeline still returns a contract-legal popular list.
+    strict_errors: bool = False
+
     # ---- platform, role 4 --------------------------------------------------
     # Sessions reserved from tuning. Never fit against these; the held out
     # curve is worth more to a judge than the score itself.

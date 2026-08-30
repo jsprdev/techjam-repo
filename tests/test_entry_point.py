@@ -38,12 +38,38 @@ def test_entry_point_imports_the_same_class_as_src():
     assert "ok" in result.stdout
 
 
-def test_evaluator_file_is_unmodified():
-    """The rules forbid editing evaluator files. Fail loudly if anyone did."""
+# Hashes taken from the pristine participant-kit release. Pinning content rather
+# than diffing against git is deliberate: `git diff HEAD` compares the working
+# tree to the last commit, so it reports clean for an edit that was committed,
+# and reports clean again if git itself is unavailable. A content hash is
+# tamper-evident regardless of history.
+PRISTINE_EVALUATOR_SHA256 = {
+    "local_evaluator.py": "79a5ea06f9a1b8c5036f30efa85dc1f36b8f6b06eb8feb8f545dfa767bc45564",
+    "__init__.py": "c597e982409b24fe5411298cfe033aeb287eafcf26c33e34b8c43294cff0a917",
+}
+
+
+def test_evaluator_files_are_byte_identical_to_the_kit():
+    """The rules forbid editing evaluator files and treat a modified run as
+    invalid, so this has to catch a committed edit, not just a dirty tree."""
+    import hashlib
+
+    for name, expected in PRISTINE_EVALUATOR_SHA256.items():
+        path = KIT / "evaluator" / name
+        actual = hashlib.sha256(path.read_bytes()).hexdigest()
+        assert actual == expected, (
+            f"{path} has been modified. The submission rules forbid editing "
+            f"evaluator files. Expected {expected}, got {actual}."
+        )
+
+
+def test_uncommitted_evaluator_edits_are_also_caught():
+    """Cheap second signal that names the file, for a dirty working tree."""
     result = subprocess.run(
-        ["git", "diff", "--name-only", "HEAD", "--", "techjam-conversational-search/evaluator/"],
+        ["git", "status", "--porcelain", "--", "techjam-conversational-search/evaluator/"],
         capture_output=True,
         text=True,
         cwd=str(REPO_ROOT),
     )
-    assert result.stdout.strip() == "", f"evaluator files modified: {result.stdout}"
+    assert result.returncode == 0, "git unavailable, so this check proved nothing"
+    assert result.stdout.strip() == "", f"evaluator files dirty: {result.stdout}"

@@ -17,6 +17,7 @@ into CI.
 
 from __future__ import annotations
 
+import argparse
 import subprocess
 import sys
 from pathlib import Path
@@ -30,7 +31,13 @@ DEFAULT_CATALOG = REPO_ROOT / "techjam-conversational-search/data/catalog.jsonl"
 PROBE = r'''
 import socket, sys, ssl
 
-class Blocked(Exception):
+# Derives from BaseException, NOT Exception, deliberately. Agent.respond wraps
+# its work in a blanket `except Exception` so a failed turn degrades instead of
+# forfeiting the session. That is right for production and fatal for this probe:
+# an Exception sentinel gets swallowed, the fallback list comes back
+# contract-legal, and the probe reports PASS on an agent that just called out to
+# the network. Only a BaseException reaches us past that handler.
+class Blocked(BaseException):
     pass
 
 def _blocked(*args, **kwargs):
@@ -44,9 +51,12 @@ ssl.SSLContext.wrap_socket = _blocked
 
 sys.path.insert(0, {repo!r})
 from src.agent import Agent
+from src.config import Config
 from src.response import violations
 
-agent = Agent({catalog!r})
+# Belt and braces: strict_errors makes the agent re-raise rather than degrade,
+# so even an Exception-derived failure surfaces here instead of being masked.
+agent = Agent({catalog!r}, Config().with_overrides(strict_errors=True))
 agent.reset("offline-probe", {{
     "purchase_frequency": "3-4 prior purchases",
     "average_prior_rating": None,
@@ -75,7 +85,9 @@ print("OK 10 turns completed with every socket blocked")
 
 
 def main() -> None:
-    catalog = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_CATALOG
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--catalog", type=Path, default=DEFAULT_CATALOG)
+    catalog = parser.parse_args().catalog
     if not catalog.exists():
         print(f"catalog not found at {catalog}")
         raise SystemExit(1)

@@ -100,6 +100,26 @@ class Agent:
         try:
             return self._respond(session_id, user_message, turn, top_k, started)
         except Exception:  # noqa: BLE001 - a crash costs the whole session
+            if self.config.strict_errors:
+                # Tests and the offline probe opt in to this. Without it, a
+                # totally broken pipeline still returns a contract-legal list
+                # and every assertion downstream passes on the fallback.
+                raise
+            # Record the fallback too. Traces that silently omit failed turns
+            # make latency and failure rate look better than they are.
+            SINK.record(
+                TurnTrace(
+                    session_id=session_id,
+                    turn=turn,
+                    user_message=user_message,
+                    query="",
+                    ask_attribute="other",
+                    candidate_count=0,
+                    top_recommendations=[],
+                    elapsed_ms=(time.perf_counter() - started) * 1000.0,
+                    extra={"fallback": True},
+                )
+            )
             return response_module.build(
                 message="Let me keep looking. Could you tell me more about what you need?",
                 ask_attribute="other",

@@ -108,3 +108,71 @@ def test_turn_ten_still_returns_a_full_list(agent, profile):
     agent.reset("last", profile)
     result = agent.respond("last", "stainless steel wrist watch", 10, 10)
     assert len(result["recommendations"]) >= 1
+
+
+# -- tests with teeth --------------------------------------------------------
+# Everything above asserts the response is contract-legal and non-empty. Both
+# hold on the crash fallback path, so the whole pipeline can be dead and they
+# still pass. These distinguish a working agent from a degraded one.
+
+
+def test_a_dead_pipeline_is_actually_detected(strict_agent, profile, monkeypatch):
+    """Guards the guard. If this fails, the tests below stopped testing."""
+    import src.retrieval.baseline as baseline
+
+    monkeypatch.setattr(
+        baseline.TfidfRetriever,
+        "retrieve",
+        lambda self, query, k: (_ for _ in ()).throw(RuntimeError("dead")),
+    )
+    strict_agent.reset("dead", profile)
+    with pytest.raises(RuntimeError):
+        strict_agent.respond("dead", "leather belt", 1, 10)
+
+
+def test_production_agent_degrades_rather_than_raising(agent, profile, monkeypatch):
+    """The other half of the same behaviour: in production a crash must not
+    forfeit the session."""
+    import src.retrieval.baseline as baseline
+
+    monkeypatch.setattr(
+        baseline.TfidfRetriever,
+        "retrieve",
+        lambda self, query, k: (_ for _ in ()).throw(RuntimeError("dead")),
+    )
+    agent.reset("degrade", profile)
+    result = agent.respond("degrade", "leather belt", 1, 10)
+    assert response.violations(result) == []
+    assert result["recommendations"], "a degraded turn must still guess"
+
+
+@pytest.mark.parametrize(
+    "query, expected_top",
+    [
+        ("stainless steel wrist watch water resistant", "B000000002"),
+        ("cork sole adjustable flat thong sandals", "B000000004"),
+        ("triple moon pentagram pendant necklace", "B000000005"),
+    ],
+)
+def test_retrieval_actually_finds_the_right_product(strict_agent, profile, query, expected_top):
+    """The fallback returns items in popularity order regardless of the query,
+    so asserting a query-specific winner is what separates the two paths."""
+    strict_agent.reset("finds", profile)
+    result = strict_agent.respond("finds", query, 1, 10)
+    top = result["recommendations"][0]["parent_asin"]
+    assert top == expected_top, f"expected {expected_top} first for {query!r}, got {top}"
+
+
+def test_the_answer_is_not_just_the_popularity_fallback(agent, profile):
+    """The sharpest available check that retrieval ran.
+
+    A count assertion cannot do this: on a nine product fixture real retrieval
+    legitimately returns fewer than ten, while the fallback always returns a
+    full popularity-ordered list. So compare against that list directly.
+    """
+    agent.reset("notfallback", profile)
+    result = agent.respond("notfallback", "cork sole adjustable flat thong", 1, 10)
+    returned = [item["parent_asin"] for item in result["recommendations"]]
+    fallback = agent._fallback(10)
+    assert returned != fallback, "the agent returned the popularity list, so retrieval did not run"
+    assert returned[0] == "B000000004"

@@ -83,9 +83,24 @@ class SlotState(Protocol):
     def constraints(self) -> list[str]:
         """Every constraint phrase disclosed so far, most recent last.
 
-        The simulated customer speaks in phrases lifted verbatim from the target
-        product's own record, so ranking treats these as near-literal evidence
-        rather than as loose natural language.
+        These are whole customer utterances, not extracted attribute values.
+        The simulated customer's wording is drawn from the target product's own
+        record, so the phrases carry near-literal evidence, but each one still
+        arrives wrapped in conversational framing such as "For that, what
+        matters is: ...". Consumers that want the bare phrase must strip it.
+        """
+        ...
+
+    def observe(self, user_message: str, turn: int) -> None:
+        """Record what the customer said this turn, before anything is read."""
+        ...
+
+    def pick_attribute(self) -> str | None:
+        """Choose the attribute to ask about, or None to ask nothing.
+
+        Must return a member of ASK_ATTRIBUTES or None. Anything else is a
+        contract violation; the local evaluator silently coerces it to "other"
+        but the shipped enum is closed.
         """
         ...
 
