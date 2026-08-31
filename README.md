@@ -75,7 +75,7 @@ python evaluation/verify_offline.py              # proves no network dependency
 python evaluation/check_degeneracy.py            # proves ranking still reads the query
 python evaluation/diagnostics.py                 # catalog field and coverage audit
 python evaluation/recall_ceiling.py              # the retrieval ceiling
-pytest                                           # 81 tests, about two seconds
+pytest                                           # 44 tests, about two seconds
 ```
 
 ## How it works

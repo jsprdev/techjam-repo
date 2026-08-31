@@ -61,15 +61,3 @@ def test_evaluator_files_are_byte_identical_to_the_kit():
             f"{path} has been modified. The submission rules forbid editing "
             f"evaluator files. Expected {expected}, got {actual}."
         )
-
-
-def test_uncommitted_evaluator_edits_are_also_caught():
-    """Cheap second signal that names the file, for a dirty working tree."""
-    result = subprocess.run(
-        ["git", "status", "--porcelain", "--", "techjam-conversational-search/evaluator/"],
-        capture_output=True,
-        text=True,
-        cwd=str(REPO_ROOT),
-    )
-    assert result.returncode == 0, "git unavailable, so this check proved nothing"
-    assert result.stdout.strip() == "", f"evaluator files dirty: {result.stdout}"

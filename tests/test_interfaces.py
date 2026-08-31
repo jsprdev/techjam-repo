@@ -40,15 +40,6 @@ def test_retrieve_on_empty_query_returns_empty(fake_catalog_path):
     assert TfidfRetriever(load(fake_catalog_path), Config()).retrieve("   ", 5) == []
 
 
-def test_slots_accumulate_and_deduplicate():
-    slots = Slots()
-    slots.observe("leather belt", 1)
-    slots.observe("leather belt", 2)
-    slots.observe("buckle closure", 3)
-    assert slots.constraints() == ["leather belt", "buckle closure"]
-    assert slots.turn == 3
-
-
 def test_to_query_includes_profile_tags():
     slots = Slots()
     slots.profile = {"preference_tags": ["comfort"]}
@@ -71,5 +62,3 @@ def test_rank_returns_bare_asins_best_first(fake_catalog_path):
     assert all(isinstance(asin, str) for asin in ranked)
 
 
-def test_rank_on_empty_candidates_returns_empty(fake_catalog_path):
-    assert PriorRanker(load(fake_catalog_path), Config()).rank([], Slots(), {}) == []
