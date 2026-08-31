@@ -255,3 +255,74 @@ above: **HitRate rises to 0.981**, the best any configuration has produced, whil
 The wider Browsing pool genuinely contains targets the narrow pool misses. Nothing we have
 ranks them well enough to profit. That is the same open thread as the field-aware route, and
 it is where the remaining score is: browsing MRR is 0.675 against buying's 0.828.
+
+---
+
+## Where the remaining MRR actually goes
+
+`evaluation/rank_diagnostics.py` had never run. It called `run_eval.run()` with an argument
+that does not exist, and it read two trace keys the agent never emitted, so it raised before
+producing a number either way. Both are fixed and the trace now carries the per-candidate
+score breakdown, gated on the trace sink so a scored run allocates nothing extra.
+
+With it working, the picture on 160 train sessions is specific.
+
+### The ranking stage is doing most of the work
+
+| | |
+| --- | --- |
+| Mean rank of the target when retrieval returns it | **56.5** |
+| Mean rank after ranking | **1.74** |
+| Sessions where ranking promoted the target | 125 of 156 |
+| Sessions where ranking demoted it | **2** |
+| Unchanged | 29 |
+
+Retrieval finds the target and puts it around rank 56. Ranking moves it to 1.74, and it makes
+things worse in 2 sessions out of 156. That is the answer to "is the LLM Semantic Ranking
+stage load bearing", and it is worth more than an architecture diagram.
+
+### When the target loses, it loses on popularity alone
+
+For sessions where the target converted but not at rank one, the mean advantage the item
+above it held, per score term:
+
+| Term | Leader's advantage |
+| --- | --- |
+| **popularity** | **+0.264** |
+| appeal (offline LLM prior) | +0.008 |
+| rating | +0.000 |
+| retrieval | -0.011 |
+| **phrase** | **-0.010** |
+
+Negative means the target was ahead on that term. So in the losing cases the target is
+**equal or better on both phrase evidence and retrieval similarity**, and loses purely
+because something above it is more popular.
+
+Per scenario, the tie is even cleaner:
+
+| Scenario | converted | target at rank 1 | displaced | popularity advantage | phrase advantage |
+| --- | --- | --- | --- | --- | --- |
+| buying | 63 | 51 | 12 | +0.314 | 0.000 |
+| **browsing** | 62 | **36** | **26** | +0.230 | **0.000** |
+| intent_override | 23 | 20 | 3 | +0.081 | 0.000 |
+
+Browsing loses the target from rank one 26 times against buying's 12, on the same HitRate.
+And in every scenario the phrase advantage is **exactly zero**: the displacing item matched
+the customer's quoted phrases just as well as the target did.
+
+### What that implies
+
+The phrase signal has run out of resolution. It is the strongest term we have and by the time
+a session is losing, it has already tied. Popularity then decides, and popularity is not a
+signal about this customer.
+
+That is not an argument for lowering the popularity weight: it was swept from 0.0 to 5.0 and
+zeroing it costs 0.43, because in the many sessions the target does win, popularity is what
+wins it. It is an argument for a **tie-breaker that only fires when phrase evidence ties**,
+which is precisely the case a model reading the conversation is suited to and a bag of words
+is not.
+
+So the live reranker in `src/language/rerank.py` is aimed at a real, measured gap rather than
+at the brief's wording. The honest caveat stays: it has never been run against a key, it costs
+$0.64 for a full 200-session run, and it may still lose, because this simulator's customer
+speaks in verbatim catalog substrings. But the case for trying it is now a measurement.

@@ -24,12 +24,14 @@ an LLM rerank can only ever sit behind `Config.use_llm`, which defaults to off.
 from __future__ import annotations
 
 import math
+from typing import Any
 
 from src import semantic
 from src.catalog import Catalog, product_text
 from src.config import Config
 from src.interfaces import Candidate, SlotState
 from src.state.belief import Belief
+from src.trace import SINK
 
 # A phrase shorter than this matches too much to be evidence of anything.
 MIN_PHRASE_CHARS = 4
@@ -105,40 +107,73 @@ class PriorRanker:
         weight_total = sum(weights) or 0.0
         boost = self.config.exact_phrase_boost if weight_total > 0.0 else 0.0
 
+        # Per-candidate score components, kept only while the trace sink is on.
+        # `evaluation/rank_diagnostics.py` needs them to answer the one question
+        # a bare score cannot: when the target lands at rank 7, which component
+        # did the item above it win on? Building this list unconditionally would
+        # allocate a dict per candidate per turn on the scored path, so it is
+        # gated on the sink being enabled and is empty during a real run.
+        explain = SINK.enabled
+        components: list[dict[str, Any]] = []
+
         scored: list[tuple[float, str]] = []
         for parent_asin, score in shortlist:
             product = self.catalog.get(parent_asin)
             if product is None:
                 continue
-            total = score / best
+            retrieval_term = score / best
             if sharpen != 1.0:
-                total **= sharpen
+                retrieval_term **= sharpen
+            total = retrieval_term
 
             ratings = product.get("rating_number") or 0
-            total += self.config.weight_popularity * math.log1p(float(ratings)) / 12.0
+            popularity_term = self.config.weight_popularity * math.log1p(float(ratings)) / 12.0
+            total += popularity_term
 
+            appeal_term = 0.0
             if self.config.weight_appeal and len(self.prior):
-                total += self.config.weight_appeal * self.prior.appeal_of(
+                appeal_term = self.config.weight_appeal * self.prior.appeal_of(
                     parent_asin, self._appeal_default
                 )
+                total += appeal_term
 
+            rating_term = 0.0
             average = product.get("average_rating")
             if isinstance(average, (int, float)):
-                total += self.config.weight_rating * (float(average) / 5.0)
+                rating_term = self.config.weight_rating * (float(average) / 5.0)
+                total += rating_term
 
+            phrase_term = 0.0
             if phrases and boost:
                 text = self._text(parent_asin)
                 hits = sum(w for phrase, w in zip(phrases, weights) if phrase in text)
-                total += boost * (hits / weight_total)
+                phrase_term = boost * (hits / weight_total)
+                total += phrase_term
+
+            if explain:
+                components.append(
+                    {
+                        "parent_asin": parent_asin,
+                        "retrieval": round(retrieval_term, 6),
+                        "popularity": round(popularity_term, 6),
+                        "appeal": round(appeal_term, 6),
+                        "rating": round(rating_term, 6),
+                        "phrase": round(phrase_term, 6),
+                        "total": round(total, 6),
+                    }
+                )
 
             scored.append((total, parent_asin))
 
         scored.sort(key=lambda pair: -pair[0])
         tail = [asin for asin, _ in candidates[cut:]]
+        if explain:
+            components.sort(key=lambda row: -row["total"])
         return Belief(
             asins=[asin for _, asin in scored],
             scores=[score for score, _ in scored],
             tail=tail,
+            components=components,
         )
 
     def rank(

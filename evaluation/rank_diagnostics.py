@@ -24,6 +24,10 @@ from src.config import Config
 from src.trace import SINK
 
 
+# The score terms the ranker reports, in the order they are blended.
+COMPONENTS = ("retrieval", "popularity", "appeal", "rating", "phrase", "total")
+
+
 def position(items: list[dict[str, Any]], target: str) -> int | None:
     for index, item in enumerate(items, 1):
         if item["parent_asin"] == target:
@@ -71,13 +75,7 @@ def diagnose(
                     if target_score is None or leader is None
                     else {
                         name: round(float(leader[name]) - float(target_score[name]), 4)
-                        for name in (
-                            "retrieval",
-                            "popularity",
-                            "rating",
-                            "phrase",
-                            "total",
-                        )
+                        for name in COMPONENTS
                     }
                 ),
             }
@@ -88,11 +86,7 @@ def diagnose(
     advantages = {
         name: mean([float(row["leader_advantage"][name]) for row in displaced if row["leader_advantage"]])
         for name in (
-            "retrieval",
-            "popularity",
-            "rating",
-            "phrase",
-            "total",
+            *COMPONENTS,
         )
     }
     return {
@@ -104,8 +98,43 @@ def diagnose(
         "unchanged_by_reranker": sum(delta == 0 for delta in deltas),
         "mean_rank_delta": mean(deltas),
         "mean_leader_advantage_when_target_not_first": advantages,
+        # The aggregate hides the thing worth knowing. Browsing MRR trails
+        # buying by 0.15 on the same HitRate, so the interesting question is
+        # not "where does the target land" but "where does it land, per
+        # scenario, and which term is beating it there".
+        "by_scenario": by_scenario(rows),
         "sessions": rows,
     }
+
+
+def by_scenario(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Split the ranking picture by scenario, best first by final rank."""
+    out: dict[str, Any] = {}
+    for scenario in sorted({str(row["scenario_type"]) for row in rows}):
+        group = [row for row in rows if row["scenario_type"] == scenario]
+        displaced = [row for row in group if row["final_rank"] and row["final_rank"] > 1]
+        out[scenario] = {
+            "converted": len(group),
+            "target_first": sum(1 for row in group if row["final_rank"] == 1),
+            "mean_retrieval_rank": mean(
+                [float(row["retrieval_rank"]) for row in group if row["retrieval_rank"]]
+            ),
+            "mean_final_rank": mean(
+                [float(row["final_rank"]) for row in group if row["final_rank"]]
+            ),
+            "displaced": len(displaced),
+            "mean_leader_advantage": {
+                name: mean(
+                    [
+                        float(row["leader_advantage"][name])
+                        for row in displaced
+                        if row["leader_advantage"]
+                    ]
+                )
+                for name in COMPONENTS
+            },
+        }
+    return out
 
 
 def main() -> None:
@@ -123,13 +152,17 @@ def main() -> None:
     }
     config = Config().with_overrides(**overrides) if overrides else Config()
     train, _ = split(load_sessions(args.dataset), config)
+    # `run` turns the trace sink on for the whole evaluation regardless, which
+    # is what `diagnose` reads back, so no extra argument is needed here. There
+    # used to be a `detailed_traces=True` on this call and it raised TypeError:
+    # the script had drifted from run_eval's signature and nobody noticed,
+    # because nothing imports it and nothing ran it.
     result = run(
         args.catalog,
         args.dataset,
         "train",
         config,
         trace_path=None,
-        detailed_traces=True,
     )
     report = diagnose(train, result)
     args.output.parent.mkdir(parents=True, exist_ok=True)

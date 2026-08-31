@@ -274,6 +274,14 @@ class Agent:
                     "pivot": turn in slots.pivot_turns,
                     "retired": sorted(slots.retired_attributes),
                     "compression": round(session.compression(), 4),
+                    # Diagnostic only, and empty unless the trace sink is on.
+                    # `evaluation/rank_diagnostics.py` joins these against the
+                    # known target to attribute a ranking loss to a term.
+                    "retrieval_shortlist": [
+                        {"parent_asin": asin, "score": round(float(score), 6)}
+                        for asin, score in candidates
+                    ],
+                    "ranking": belief.components,
                 },
             )
         )

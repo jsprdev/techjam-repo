@@ -44,11 +44,16 @@ class Belief:
     `asins` and `scores` are aligned and already sorted best first. `tail` holds
     the candidates retrieval returned but ranking never scored, kept so that
     `ranking()` is a permutation of the pool rather than a subset of it.
+    `components` is diagnostic only and empty unless tracing is enabled.
     """
 
     asins: list[str]
     scores: list[float]
     tail: list[str] = field(default_factory=list)
+    # Per-candidate score components, populated only while the trace sink is on.
+    # Diagnostics read it to attribute a ranking loss to a specific term; the
+    # scored path leaves it empty so a real run allocates nothing extra.
+    components: list[dict[str, object]] = field(default_factory=list)
 
     def __len__(self) -> int:
         return len(self.asins) + len(self.tail)
