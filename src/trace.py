@@ -36,6 +36,15 @@ class TraceSink:
         self._enabled = False
         self._traces: list[TurnTrace] = []
 
+    @property
+    def enabled(self) -> bool:
+        """Whether traces are being collected.
+
+        Read by the ranker to decide whether to build its per-candidate score
+        breakdown, which is diagnostic and costs a dict per candidate per turn.
+        """
+        return self._enabled
+
     def enable(self) -> None:
         self._enabled = True
 

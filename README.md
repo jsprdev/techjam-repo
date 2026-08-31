@@ -247,6 +247,29 @@ metric had to pass to be reported: a turn count would have failed it.
 
 ## What the diagnostics found
 
+### Is the ranking stage load bearing?
+
+`evaluation/rank_diagnostics.py`, 160 train sessions:
+
+| | |
+| --- | --- |
+| Mean rank of the target when retrieval returns it | 56.5 |
+| Mean rank after ranking | **1.74** |
+| Sessions where ranking promoted the target | 125 of 156 |
+| Sessions where ranking demoted it | 2 |
+
+And when the target converts but not at rank one, the mean advantage held by the item above
+it, per score term: popularity **+0.264**, appeal +0.008, rating +0.000, retrieval -0.011,
+phrase **-0.010**. Negative means the target was ahead. So in the losing cases the target is
+equal or better on both phrase evidence and retrieval similarity, and loses purely to
+popularity. Per scenario the phrase advantage is exactly 0.000 every time.
+
+The reading: the phrase signal has run out of resolution by the time a session is losing, and
+popularity, which is not a signal about this customer, then decides. That is the measured case
+for a tie-breaker that fires only when phrase evidence ties, which is what the live reranker
+is for. Full tables in `docs/retrieval-merge-finding.md`.
+
+
 `phase0-findings.md` carries the full evidence. Three measurements shaped the design:
 
 1. **Retrieval is not the bottleneck.** Plain TF-IDF reaches 100% recall at depth 1000 and
