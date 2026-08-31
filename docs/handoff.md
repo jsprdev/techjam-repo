@@ -1,228 +1,149 @@
-# Handoff: what each role picks up
+# Handoff: what is done, what is left
 
-Written overnight after day 1. Read your own section, then `phase0-findings.md` for the
-evidence behind any claim you want to challenge.
+Supersedes the day 1 handoff. Written against every reference document in the repo: the
+organiser's `problem-statement.md` and kit docs, the team's `techjam-detailed-agent-spec.md`
+and `techjam-summary-spec.md`, `docs/build-plan.md`, `phase0-findings.md`,
+`docs/status-evaluation.md`, `docs/retrieval-merge-finding.md`, and both `CLAUDE.md` files.
 
-## Since this was written
+Every claim below was checked against the code, not the docstrings.
 
-Every number below is from day 1 and is now stale by about 0.11 of score. The current state
-is the README, `docs/status-evaluation.md` and `python evaluation/run_eval.py`. What has
-landed since, and what it means for your section:
+---
 
-- The train split now reads **0.8951**, not 0.7889. `exact_phrase_boost`, the popularity
-  prior and the ask ordering are all tuned and swept; `artifacts/sweep_*.json` holds the
-  curves. Assume the easy tuning is spent.
-- `src/policy/` and `src/language/` exist. Routing, the over-generality cutoff and question
-  selection moved out of `agent.py` and `slots.py` into their own modules.
-- **Role 1 is untouched and still yours.** `src/retrieval/`, `src/catalog.py` and the five
-  `weight_*` fields have no new readers. Two things beneath you did change and neither
-  breaks the seam: `PriorRanker.rank` is now one line over `PriorRanker.believe`, which
-  returns a `Belief` rather than a list, and `believe` takes optional `depth` and `sharpen`
-  arguments that default to the old behaviour. `Retriever.retrieve` is unchanged.
-- `SlotState` gained `constraint_weights()`, aligned with `constraints()`, carrying each
-  phrase's recency and override weight. The ranker reads it. If you build a retriever that
-  can take per-term weights, that is where the weights already are.
-- `INDEX_FIELDS` in `evaluation/sweep.py` still matters exactly as described below.
-- `run_eval.py --traces` now writes a list of sessions, each with its `sample_id`, outcome
-  and turns, rather than a dict keyed by the random session id. A trace can finally be joined
-  to the result it produced.
+## 1. Where the product is
 
-## Where things stand
+**0.8931 TechnicalScore** on all 200 public sessions through the official command, against a
+0.1067 baseline. 69 tests, about two seconds. Runs fully offline, negative-controlled.
 
-The pipeline runs end to end through the official command and scores **0.7889** on all 200
-public sessions against a 0.107 baseline, with placeholder modules in all three of your
-slots. That number is a starting line, not a result. It says the scaffolding is sound and
-the headroom is now measurable.
+| Metric | Value | Weight | Baseline |
+| --- | --- | --- | --- |
+| HitRate@10 | 0.975 | 0.50 | 0.125 |
+| MRR | 0.778 | 0.30 | 0.068 |
+| Efficiency | 0.861 | 0.20 | 0.119 |
+| MTTC | 2.39 | | 9.81 |
 
-It got there in two steps. The scaffold scored 0.5420 on its own. Then the sweep harness
-found that `weight_popularity`, shipped at 0.15, was badly undertuned. See the curve under
-role 3.
+Reproduce:
 
 ```bash
 pip install -r requirements.txt
-pytest                                  # 44 tests, ~2s
-python evaluation/run_eval.py           # your baseline to beat, 160 train sessions
+pytest
+cd techjam-conversational-search && python3 -m evaluator.local_evaluator --catalog data/catalog.jsonl
 ```
 
-Current per-scenario breakdown, all 200 through the official harness:
+---
 
-| scenario | n | hit@10 | mrr | mttc |
+## 2. Pillars: what is answered
+
+| Pillar | State |
+| --- | --- |
+| I, Core Architecture | **Partial.** Keyword route, dual-track routing, dynamic truncation and in-memory execution all built. **The category route, the vector route and the LLM semantic ranking stage are not.** |
+| II, Dialog Strategy | **Answered.** State machine, intent override, slot decay, over-generality cutoff, proactive clarification. |
+| III, Self-Evolution | **Answered at runtime.** Belief updating, reliability reweighting, per-turn re-orchestration, context distillation. Cross-session profiling deliberately not built. |
+| IV, Evaluation Matrix | **Answered, and beyond.** Coverage, precision, efficiency, per-scenario reporting, plus a recall ceiling diagnostic and an unspent held-out slice. |
+
+The traceability table in `README.md` maps each named requirement to the file that answers it
+and the audit that evidences it. Every file it cites exists and every mechanism it claims is
+present; that was verified rather than assumed.
+
+---
+
+## 3. What is left, ranked
+
+| # | Work | Why it matters | Effort | Collides |
 | --- | --- | --- | --- | --- |
-| buying | 80 | 0.875 | 0.780 | 3.74 |
-| browsing | 80 | 0.875 | 0.661 | 3.90 |
-| intent_override | 30 | 0.900 | 0.900 | 4.80 |
-| boundary | 10 | 0.500 | 0.500 | 6.60 |
+| 1 | **Devpost written description** | A required deliverable. Not started | half a day | no |
+| 2 | **Demo video, YouTube, public** | A required deliverable. Not started | half a day | no |
+| 3 | **Spend the held-out slice** | The only clean generalisation number we can show a judge | one command | no |
+| 4 | LLM semantic ranking stage | Pillar I names it literally. See section 5 | one day | ranking |
+| 5 | Category and vector retrieval routes | Pillar I names "keyword, category, vector" | one day | **retrieval, Jarell** |
 
-**Boundary is the weakest bucket at 0.500**, but it is 10 sessions, 5% of the score, and
-mostly noise. Do not spend a day there.
+Items 1 and 2 carry more of the grade than the score does. Judging is Technical Execution
+35%, Innovation 20%, Impact 20%, Feasibility 15%, Presentation 10%, and TechnicalScore is one
+input to the first of those.
 
-**MTTC 4.105 is the biggest remaining block.** Efficiency is 0.690 out of a possible 1.0,
-worth 0.20 of the score. Getting MTTC to 2.5 would add roughly 0.032, and it is the one
-number no lever has moved much yet. That is role 2, and it is now the best-value work left.
+Item 3 costs one command and should be done exactly once, at the end:
 
-**Retrieval itself is still untouched.** `weight_title` and the other four field weights have
-zero readers: every field is still pooled into one bag of words, so a word in a care
-instruction counts as much as one in the title. That is role 1, and it is the largest
-completely unexplored area.
+```bash
+python evaluation/run_eval.py --split holdout
+```
 
-## One thing to know before you write a test
+Nobody has looked at those 40 sessions. The moment a number from them informs a decision they
+stop measuring generalisation, so do not run it while still tuning.
 
-`Agent.respond` wraps every turn in a blanket `except Exception` and degrades to a
-popularity-ordered guess. That is deliberate, since a raise forfeits the session, and it
-means **a test whose only assertion is "the response was well formed" passes on a completely
-dead pipeline**. Three of my own checks were vacuous for exactly this reason before an
-adversarial review caught them.
+---
 
-So: use the `strict_agent` fixture for anything asserting your module works. It re-raises
-instead of degrading. Assert something the fallback cannot produce, such as a query-specific
-winner, rather than just contract legality. `tests/test_agent.py` has worked examples.
+## 4. What the measurements ruled out
 
-## Rules that bind everyone
+Recorded so nobody spends a day rediscovering these. Each was measured, not reasoned.
 
-Found by auditing the kit. Violating any of these is expensive and silent.
+| Idea | Result |
+| --- | --- |
+| Dense or vector retrieval | Recall is already 100% at depth 1000. Weights cannot be downloaded if scoring runs offline |
+| LLM catalog attribute extraction | The evaluator never reads the fields it would clean, and they are under 5% populated |
+| Field-aware retrieval | Monotonically costs MRR. `docs/retrieval-merge-finding.md` |
+| Fusing field-aware with pooled retrieval | Adds no recall the pooled route had not already found |
+| Rarity-weighted phrase evidence | +0.0003, noise, reverted |
+| Deduplicating repeated constraints | Loses 0.037. Repetition is signal |
+| Dropping the vague profile tags | Loses 0.037 |
+| Dropping the no-information replies | Loses 0.005 |
+| Parameter tuning generally | Exhausted. A nine cell sweep spans 0.017 |
+| Reinforcement learning | 200 episodes cannot support policy learning |
 
-1. **`reset()` must never raise.** The evaluator wraps `respond()` in try/except but calls
-   `reset()` bare. One exception there aborts all 200 sessions, not one turn.
-2. **`respond()` must never raise, and must return a dict whose `message` is a `str`.** If
-   either fails, the evaluator discards the whole response including your recommendations.
-3. **Never emit an `ask_attribute` outside the ten-value enum.** The local evaluator silently
-   coerces an unknown value to `other`, but the contract enum is closed and the private
-   harness may validate it.
-4. **Ranking is array order.** The `score` field is never read by the evaluator. Sort before
-   returning.
-5. **Never edit anything under `techjam-conversational-search/evaluator/`.** The submission
-   rules forbid it and `tests/test_entry_point.py` fails if you do.
-6. **No network, ever, on the critical path.** Run `python evaluation/verify_offline.py`
-   before you push. It runs a ten turn session with every socket poisoned.
-7. **Turn 10 is a full scoring turn.** The hit check runs before the loop breaks, so never
-   return a terminal message with an empty list.
+---
 
-## Role 1: Retrieval
+## 5. The honest gap, and the honest route through it
 
-`src/retrieval/baseline.py`. You own **HitRate@10, weight 0.50**. Currently 0.66.
+Pillar I names the pipeline base literally as "Multi-Route Retrieval then LLM Semantic
+Ranking". We have one route and no LLM stage, and a judge will look for both by name.
 
-The ceiling is 67% at depth 10 and 100% at depth 1000, so the candidates are already there.
-Your job is ordering them better, not finding more.
+The system makes **zero LLM calls**, deliberately: `docs/submission_rules.md` warns that
+official scoring may disable network access under CPU, memory and timeout limits. That is a
+defensible position and it is disclosed, but it is a deviation and it should be argued rather
+than glossed over.
 
-Two levers are already wired into `Config` and completely unused by the v0 module:
+The route that satisfies the requirement without pretending to call a model live: use an LLM
+**offline** to build an artefact, ship the artefact, and consume it deterministically at
+runtime. It answers the pillar, survives a network-disabled run, and is honest in the
+writeup. Nobody has built it.
 
-- `weight_title`, `weight_features`, `weight_categories`, `weight_description`,
-  `weight_store`. Right now every field is pooled into one bag of words, so a word in a care
-  instruction counts the same as one in the title.
-- `exact_phrase_boost`. This is the big one. The simulated customer's utterances are literal
-  substrings of the target product's own `features` and `details`. A whole-phrase match is
-  far stronger evidence than the sum of its tokens, and nothing currently exploits that.
+---
 
-If you change what is read at index build time, add the field to `INDEX_FIELDS` in
-`evaluation/sweep.py` or the sweep will serve you a cached index and report a wrong number.
+## 6. Rules that bind anyone touching this
 
-Done when recall@10 is above 75% and recall@1 above 55%, measured on train only.
+Each has a concrete failure behind it.
 
-## Role 2: Dialogue
+1. **`reset()` must never raise.** The evaluator calls it outside any try/except, so one
+   exception aborts all 200 sessions rather than costing a turn.
+2. **`respond()` must never raise and must return a dict whose `message` is a string.**
+   Otherwise the whole response is discarded, recommendations included.
+3. **Never edit anything under `evaluator/`.** The rules forbid it. `tests/test_entry_point.py`
+   pins the file hashes and fails on a committed change.
+4. **`starter/agent.py` must keep re-exporting `src.agent.Agent`.** This was already wrong
+   once: the official command ran the organiser's baseline while our runner used a different
+   path, so every local number measured something the graded command never executed. If the
+   score suddenly reads about 0.107, check this first.
+5. **No network on a graded path.** `python evaluation/verify_offline.py` proves it and is
+   negative-controlled.
+6. **Turn 10 is a full scoring turn.** The hit check runs before the loop breaks.
+7. **A change that lowers the score does not ship**, whatever its merits. Several have been
+   reverted on exactly that basis.
 
-`src/state/slots.py`. You own **Efficiency and MTTC, weight 0.20**. Currently 0.456 at
-MTTC 6.45. This is the largest single block of unclaimed score.
+One trap worth knowing before writing a test: `respond()` degrades to a popularity-ordered
+guess on any failure, so a test whose only assertion is "the response was well formed" passes
+on a completely dead pipeline. Use the `strict_agent` fixture, which re-raises.
 
-Three things, in order of value:
+---
 
-1. **Question policy.** `pick_attribute()` currently cycles through attributes by catalog
-   coverage. The evaluator's `customer_reply` returns up to two undisclosed constraints whose
-   `classify_constraint` bucket matches what you asked. `classify_constraint` is a plain
-   keyword matcher over a fixed word list, so you can model it exactly rather than guessing.
-   Asking an attribute the target has no constraint for wastes the information, though never
-   the turn, because asking is free.
-   - Note `attribute == "other"` matches **any** undisclosed constraint. That makes it a
-     strictly dominant ask under this simulator. `Config.allow_other_fallback` gates it.
-     Measure both, and be honest in the writeup about which we shipped and why, because "ask
-     the wildcard every turn" is effective and also a worse product.
-2. **Override.** `intent_override` sessions flip at turn 3 or 4 with a message beginning
-   "Actually, ignore my earlier preference." Hits before the flip are **not counted**, so
-   those 30 sessions cannot be won earlier no matter what. Worse, accumulating through the
-   flip actively hurts: the old constraint is now wrong and needs erasing. Nothing currently
-   detects this.
-3. **Decay.** `Config.slot_decay` is unused. A turn one inference should not weigh the same
-   at turn eight as something just stated.
+## 7. Deviations to disclose in the writeup
 
-Also yours: `_truncation_width()` in `src/agent.py` is a two-line placeholder standing in for
-real Buying versus Browsing routing.
+Per spec section 13, these are stated rather than hidden.
 
-Done when MTTC is below 4 and override sessions hit within two turns of the flip.
-
-## Role 3: Ranking and agent shell
-
-`src/rank/baseline.py` and `src/agent.py`. You own **MRR, weight 0.30**. Currently 0.403.
-
-HitRate is 0.66 but MRR is 0.40, so the target is often in the ten and not at the top. That
-gap is your whole job.
-
-**The popularity prior is already swept, and it was the single highest-leverage constant in
-the system.** Full curve over the 160 train sessions:
-
-| weight_popularity | score | hit@10 | mrr | mttc |
-| --- | --- | --- | --- | --- |
-| 0.0 | 0.4608 | 0.550 | 0.366 | 7.21 |
-| 0.4 | 0.6313 | 0.787 | 0.402 | 5.16 |
-| 1.0 | 0.7244 | 0.844 | 0.577 | 4.53 |
-| 1.5 | **0.7435** | 0.850 | 0.625 | 4.46 |
-| 2.0 | 0.7401 | 0.850 | 0.611 | 4.41 |
-| 3.0 | 0.7391 | 0.856 | 0.595 | 4.38 |
-| 5.0 | 0.7176 | 0.831 | 0.578 | 4.57 |
-
-Unimodal, plateauing across 1.5 to 3.0. I set the default to **2.0**, the middle of the
-plateau rather than its exact argmax, because those three points differ by under 0.005 and
-picking the argmax on 160 sessions is fitting noise. It is marked PROVISIONAL in
-`config.py` and it is yours to confirm or override.
-
-I also checked it is not a metric-gaming artefact: `evaluation/check_degeneracy.py` shows
-five unrelated queries still return completely disjoint top tens even at weight 20, because
-the prior only reorders a shortlist retrieval has already filtered. Rerun it if you change
-how ranking composes.
-
-### `rerank_depth`: a trade-off I deliberately did not resolve
-
-Swept over the same 160 train sessions. Composite and MRR peak in different places.
-
-| rerank_depth | score | hit@10 | mrr | mttc |
-| --- | --- | --- | --- | --- |
-| 25 | 0.6216 | 0.681 | 0.604 | 6.01 |
-| 50 | 0.6899 | 0.769 | **0.621** | 5.03 |
-| 100 (shipped) | 0.7401 | 0.850 | 0.611 | 4.41 |
-| 200 | **0.7515** | 0.875 | 0.558 | 3.67 |
-| 400 | 0.7438 | 0.881 | 0.504 | 3.39 |
-
-Deeper reranking applies the popularity prior to more candidates, which pulls more plausible
-items into the top ten and shortens sessions, but pushes the exact target down *within* those
-ten. HitRate and MTTC improve while MRR degrades.
-
-**I left the default at 100.** Moving to 200 buys +0.011 composite, which is close to noise
-on 160 sessions, and costs 0.053 MRR, which is not. MRR is 30% of the score and it is yours,
-so the call is yours. Rerun with `--split train` after any ranking change, because the shape
-of this curve depends entirely on how ranking composes.
-
-Worth knowing when you decide: `rerank_depth` is capped in practice by the truncation width,
-which is 200 on the Buying track and 800 on Browsing, so a depth above 200 only affects
-Browsing turns.
-
-Features Phase 0 says are available and unused: exact phrase overlap between disclosed
-constraints and product text, category path agreement, `average_rating`, and price band.
-
-The shell is already hardened (never raises, never exceeds the cap, always returns a list,
-contract-validated). Keep it that way. `_phrase()` is a placeholder and is the visible
-surface in the demo video, so it is worth twenty minutes late on.
-
-Any LLM rerank stays behind `Config.use_llm`, default off, with the deterministic ordering as
-the fallback. The organiser may score us with networking disabled.
-
-Done when MRR is above 0.45, zero exceptions across 200 sessions, and
-`evaluation/verify_offline.py` passes.
-
-## Role 4: Platform, already built
-
-`evaluation/`. Eval wrapper with per-scenario breakdown and traces, stratified held-out
-split, config sweep harness, latency and memory instrumentation, offline verification rig,
-contract tests. See the README.
-
-The 40 session held-out slice is reserved and stratified. Nobody tunes against it, including
-to check. The moment a held-out number informs a decision it stops measuring generalisation.
-
-Remaining for role 4: Devpost text, demo video, and untracking the 58 MB catalog from git.
+- The Buying track uses steep reweighting, not literal hard filtering. Measured: literal slot
+  erasure scores 0.8925 against 0.8951 for demotion.
+- Cross-session long-term profiling is not implemented. Sessions are defined as isolated and
+  `session_id` is a fresh UUID, so there is no eval surface for it.
+- Zero LLM calls, for the network reason in section 5.
+- The ask policy models the evaluator's constraint classifier. Three of the ten legal
+  attributes can never be answered and we do not ask them. This is fitted to this simulator;
+  a real deployment would need a general parser.
+- Every number here is on the public 200, which we have tuned against. The held-out 40 are
+  the only clean check and are still unspent.
