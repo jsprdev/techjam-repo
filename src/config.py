@@ -42,6 +42,24 @@ class Config:
     # outrank a turn one inference, which matters for Intent Override.
     slot_decay: float = 0.9
 
+    # Discard "I don't have an additional preference for X" style replies
+    # instead of feeding them to retrieval. MEASURED FALSE: dropping them
+    # scores 0.7369 against 0.7422 for keeping them, on the 160 train sessions.
+    # The intuition that they are pure noise is wrong, or at least too small to
+    # detect: their tokens are near-universal and carry almost no idf, so
+    # removing them mostly just shortens the query.
+    drop_no_information: bool = False
+
+    # Collapse a repeated constraint into one occurrence. Off, because the
+    # customer repeating something is signal: the repetition raises its term
+    # frequency in the query, which is the behaviour we want.
+    dedupe_phrases: bool = False
+
+    # Append the profile's preference_tags to the query. They are vague ("fit",
+    # "comfort") and Phase 0 found the profile carries no brand, category or
+    # price history, so this is worth measuring rather than assuming.
+    use_profile_tags: bool = True
+
     # Entropy above which the belief counts as too flat to commit, triggering
     # the over-generality cutoff and a clarifying question instead of a weak
     # list. Raise it to ask less often.
