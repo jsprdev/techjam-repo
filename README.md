@@ -6,16 +6,16 @@ Recommendations.
 A multi-turn shopping agent that finds a hidden target product in a frozen 50,000 item
 Amazon catalog by talking to a simulated customer, in at most ten turns.
 
-**Current score: 0.8931 TechnicalScore** on all 200 public sessions, measured through the
+**Current score: 0.893583 TechnicalScore** on all 200 public sessions, measured through the
 official harness, against a 0.107 BM25 baseline. Runs fully offline with no LLM dependency.
 
 | Metric | Value | Weight | Baseline |
 | --- | --- | --- | --- |
 | HitRate@10 | 0.975 | 0.50 | 0.125 |
-| MRR | 0.778 | 0.30 | 0.068 |
+| MRR | 0.7796 | 0.30 | 0.068 |
 | Efficiency | 0.861 | 0.20 | 0.119 |
 | MTTC | 2.39 | | 9.81 |
-| **TechnicalScore** | **0.8931** | | **0.1067** |
+| **TechnicalScore** | **0.893583** | | **0.1067** |
 
 | scenario | n | hit@10 | mrr | mttc |
 | --- | --- | --- | --- | --- |
@@ -158,9 +158,9 @@ Every requirement the brief names, and where it is answered.
 | --- | --- | --- | --- |
 | Dual-track routing, Buying vs Browsing | I | `policy/intent.py` | `intent_audit.py`, turn one 1.000 |
 | Multi-route retrieval: keyword | I | `retrieval/baseline.py` | `recall_ceiling.py` |
-| Multi-route retrieval: category, vector | I | not built | see the disclosure below |
+| Multi-route retrieval: field-aware route | I | `retrieval/baseline.py`, weights default 0.0 | built and swept, `docs/retrieval-merge-finding.md` |
 | In-memory pipeline, no external store | I | whole system | 875 MB peak, no network |
-| LLM semantic ranking | I | not built | see the disclosure below |
+| LLM semantic ranking | I | `offline/build_semantic_prior.py`, `src/semantic.py`, `src/language/rerank.py` | offline artefact in the shipped path, worth 0.0005; live stage off by default |
 | Custom dynamic truncation | I, in-scope | `policy/intent.py` `Track.width`, `Track.depth` | `self_evolution.py` |
 | Heterogeneous routing weights | I, in-scope | `Config.track_*` per track | swept, `artifacts/sweep_*.json` |
 | Dynamic state machine, accumulation | II | `state/slots.py` `observe` | `tests/test_policy.py` |
@@ -274,27 +274,41 @@ removed, including the pool below the rerank depth.
 the train split because the superseded preference is still true of the target in 30 of 30
 sessions.
 
-**There is no LLM in the pipeline, and the brief names one.** Pillar I quotes the pipeline
-base as "Multi-Route Retrieval then LLM Semantic Ranking". We ship a single keyword route and
-a deterministic reranker, and no model call anywhere. The second retrieval route was built and
-measured rather than skipped: `docs/retrieval-merge-finding.md` records a field-aware route
-swept continuously against the pooled index and fused with it, and every configuration scored
-at or below the pooled index alone, costing about 0.046 at the best fused operating point. The
-code is kept with its weights defaulted to zero so the measurement can be reproduced. The
-absence of the LLM stage is a separate decision, and the reason is in the submission
-rules: official scoring may run with network access disabled under CPU, memory and timeout
-limits, so a model on the critical path is a way to score zero rather than a way to score
-higher. The reranker's job here, separating the target from 200 lexically similar candidates
-using phrase overlap the customer quoted verbatim, is one a language model would not obviously
-do better, and `phase0-findings.md` shows retrieval already reaches the target inside the top
-1000 in 100% of sessions. What a model would genuinely add is the vague-query understanding of
-spec 6.3, which this simulator never produces: its customer speaks in phrases lifted straight
-out of the target's own record.
+**The LLM ranking stage runs offline, not on the turn path.** Pillar I quotes the pipeline
+base as "Multi-Route Retrieval then LLM Semantic Ranking", and the submission rules say
+official scoring may run with network access disabled under CPU, memory and timeout limits.
+Those two pull in opposite directions: a model on the critical path is a way to score zero,
+not a way to score higher.
 
-We would rather state that plainly than ship a code path that never ran. `Config.use_llm` and
-`Config.llm_timeout_seconds` remain as the seam a rerank stage would attach to, and
-`src/language/` holds the deterministic half of the language layer that does ship, the
-grounded question wording of spec 6.6.
+We resolved it by moving the model call off the turn path rather than dropping it.
+`offline/build_semantic_prior.py` sends catalog products to Claude Haiku 4.5 through the
+Batches API once, ahead of time, and writes its appeal and use-case judgments to
+`artifacts/semantic_prior.json`. That file is committed. At scoring time the ranker reads it
+as a lookup (`src/rank/baseline.py`, `Config.weight_appeal`), so an LLM judgment is in the
+shipped ranking while the shipped run still makes no network call, needs no API key, and
+reports zero tokens.
+
+Two honest qualifications. The artefact covers **60 of the 50,000 products**, a
+cost-controlled sample rather than a full pass, and it moves the score by **0.0005**
+(0.893583 with it, 0.893083 without). The full catalog pass is costed at about $13.44 and has
+not been spent, because the sample has not yet shown a direction worth scaling. So this stage
+is a working pipeline demonstrated end to end, not a material contributor to the number.
+
+**A live conversational reranker also exists, and is off by default.**
+`src/language/rerank.py` reads the actual dialogue and reorders the top 20 candidates. Every
+failure path (no key, timeout, malformed reply, network down) returns the input order and
+reports `used_llm=False`, so it can never cost a session. It is off because it has never been
+run against a real key: a full 200-session run costs $0.64 on Haiku 4.5, and until that
+number exists we will not claim it helps. There is reason to doubt it will. This simulator's
+customer speaks in phrases lifted straight out of the target's own record, so exact phrase
+overlap is unusually strong here and semantic reasoning unusually weak, and the stage only
+reorders 20 candidates when HitRate is already 0.975.
+
+**The second retrieval route was built and measured rather than skipped.**
+`docs/retrieval-merge-finding.md` records a field-aware route swept continuously against the
+pooled index and fused with it. Every configuration scored at or below the pooled index alone,
+costing about 0.046 at the best fused operating point. The code is kept with its weights
+defaulted to zero so the measurement can be reproduced.
 
 **Cross-session long-term profiling is not implemented.** Pillar III asks for continuously
 updated long-term user profiles, and the constraints define every session as an isolated
@@ -352,11 +366,21 @@ resolving merge conflicts. `docs/build-plan.md` has the full allocation and
 | 3. Ranking and agent shell | `src/agent.py`, `src/rank/`, `src/language/` | MRR, 0.30 |
 | 4. Platform and measurement | `evaluation/`, `src/config.py`, `src/interfaces.py`, docs | every number above |
 
-**This table is the plan, not the record.** Per-person attribution is filled in from the git
-history before submission rather than asserted here, so that what the README claims and what
-`git log --format='%an %s'` shows cannot disagree. As of this commit the history shows Jasper
-Ang on the phase 0 diagnostics, the day one scaffold, the platform and the agent shell, and
-Jarell Liaw on retrieval and integration.
+**The table above is the plan. The record is below**, read off the git history rather than
+asserted, so that what the README claims and what `git log --format='%an %s'` shows cannot
+disagree. Reproduce it with `git shortlog -sne main`.
+
+| Person | What they contributed |
+| --- | --- |
+| **Jasper Ang** | Repository and kit setup, phase 0 diagnostics, the day one scaffold and the frozen `src/interfaces.py` seams, the agent shell and platform, the evaluation harness, the offline LLM semantic prior and the live reranker, and integration of everyone's branches into `main`. |
+| **Jarell Liaw** | Field-aware retrieval (`src/retrieval/baseline.py` per-field TF-IDF, the `phrases` argument on the retriever seam, `evaluation/rank_diagnostics.py`), reaching HitRate 0.988 in isolation; the Devpost description and the first demo script. |
+| **Gan Ziheng** | The profile preference-tags ranking experiment: built, swept on the train split, measured as no gain outside the noise band, and removed rather than shipped. Written up in `docs/retrieval-merge-finding.md`. Also found the cross-machine score drift that led to the deterministic tie-break fix. |
+| **Chee Hin** | Exact dependency pinning, correcting the shipped-retrieval description in the README limitations, and rebuilding the demo script around measured rather than assumed runtimes. |
+
+Two of these are negative results, and they are listed as contributions deliberately. The
+preference-tags experiment and the field-aware retrieval sweep both cost real work and both
+ended in "measured, does not help, not shipped". Recording them is what stops the next person
+rebuilding them, and the reasoning behind a rejected idea is in `docs/retrieval-merge-finding.md`.
 
 ## Limitations
 
