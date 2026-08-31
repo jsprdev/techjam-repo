@@ -18,18 +18,41 @@ from dataclasses import dataclass, field
 
 from src.config import Config
 
-# Ordered by how often the catalog can answer, measured in phase0-findings.md.
-ATTRIBUTES_BY_COVERAGE = (
+# The ask order, measured rather than assumed.
+#
+# The customer only answers an attribute if one of the target's own constraint
+# phrases falls into that bucket. Measured across all 200 public sessions, the
+# buckets those phrases actually land in are:
+#
+#     feature    50.5% of constraints, answerable in 96.0% of sessions
+#     material   37.8%                                76.5%
+#     color       7.5%                                25.5%
+#     style       2.4%                                 9.0%
+#     size        1.4%                                 4.5%
+#     use_case    0.5%                                 2.0%
+#
+# Reproduce with the bucket audit in evaluation/ask_yield.py.
+ATTRIBUTES_BY_YIELD = (
     "feature",
-    "category",
-    "brand",
-    "budget",
-    "color",
     "material",
+    "color",
     "style",
-    "use_case",
     "size",
+    "use_case",
 )
+
+# Asking any of these is a guaranteed miss. Nothing the customer says is ever
+# classified into them, so the reply is always "I don't have an additional
+# preference" and the information the turn could have bought is lost. The first
+# version of this module asked category and brand on turns 2 and 3, spending
+# the two most valuable early asks on questions with no possible answer.
+UNANSWERABLE = ("category", "brand", "budget")
+
+# Matches ANY undisclosed constraint regardless of bucket, so it is the single
+# most productive ask available. Kept as a fallback rather than the default
+# because "tell me anything else" is a worse thing to say to a shopper than a
+# specific question, and the specific questions above already reach 96%.
+WILDCARD = "other"
 
 # Utterances that carry no information. Matching these is worth more than any
 # other single change in this module: they are frequent, and every one of them
@@ -72,6 +95,7 @@ class Slots:
     category: str = ""
     _phrases: list[str] = field(default_factory=list)
     _asked: list[str] = field(default_factory=list)
+    _exhausted: set[str] = field(default_factory=set)
     _informative_turns: int = 0
 
     # -- ingest --------------------------------------------------------------
@@ -90,8 +114,13 @@ class Slots:
                 if not text:
                     return
 
-        if self.config.drop_no_information and any(p.match(text) for p in NO_INFORMATION):
-            return
+        if any(pattern.match(text) for pattern in NO_INFORMATION):
+            # The customer just told us this bucket is empty for their target.
+            # Record it so the policy never spends another turn on it.
+            if self._asked:
+                self._exhausted.add(self._asked[-1])
+            if self.config.drop_no_information:
+                return
 
         for phrase in self._payloads(text):
             if not phrase:
@@ -145,11 +174,21 @@ class Slots:
     # -- ask policy ----------------------------------------------------------
 
     def pick_attribute(self) -> str | None:
-        for attribute in ATTRIBUTES_BY_COVERAGE:
-            if attribute not in self._asked:
+        """Choose the next attribute to ask about.
+
+        Ordered by measured yield, skipping anything already asked. An attribute
+        that came back empty is never retried: the customer told us that bucket
+        is empty for this target, and asking again spends a turn to be told so
+        twice.
+        """
+        for attribute in ATTRIBUTES_BY_YIELD:
+            if attribute not in self._asked and attribute not in self._exhausted:
                 self._asked.append(attribute)
                 return attribute
-        return "other" if self.config.allow_other_fallback else None
+        if self.config.allow_other_fallback and WILDCARD not in self._exhausted:
+            self._asked.append(WILDCARD)
+            return WILDCARD
+        return None
 
     @property
     def asked(self) -> list[str]:

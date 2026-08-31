@@ -183,10 +183,30 @@ def test_multiple_constraints_are_split_apart():
     assert slots.constraints() == ["Water Resistant", "3 Year Battery"]
 
 
-def test_pick_attribute_never_repeats_before_exhausting():
+def test_pick_attribute_never_asks_an_unanswerable_attribute():
+    """category, brand and budget are never returned by the evaluator's
+    constraint classifier, so asking them is a guaranteed wasted turn. The
+    first version of the policy spent turns 2 and 3 on two of them."""
+    from src.state.slots import UNANSWERABLE
+
     slots = Slots()
-    picked = [slots.pick_attribute() for _ in range(9)]
-    assert len(set(picked)) == 9, "a repeated ask wastes the information"
+    picked = [slots.pick_attribute() for _ in range(8)]
+    assert not (set(picked) & set(UNANSWERABLE)), f"asked an unanswerable attribute: {picked}"
+
+
+def test_pick_attribute_orders_by_measured_yield():
+    slots = Slots()
+    assert [slots.pick_attribute() for _ in range(3)] == ["feature", "material", "color"]
+
+
+def test_an_empty_answer_retires_that_attribute():
+    """The customer saying the bucket is empty is information. Asking again
+    spends a turn to be told the same thing twice."""
+    slots = Slots()
+    first = slots.pick_attribute()
+    slots.observe(f"I don't have an additional preference for {first}.", 1)
+    later = [slots.pick_attribute() for _ in range(6)]
+    assert first not in later
 
 
 def test_rank_returns_bare_asins_best_first(fake_catalog_path):

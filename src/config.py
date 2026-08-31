@@ -95,9 +95,23 @@ class Config:
     # because the prior only reorders a shortlist retrieval already filtered.
     weight_popularity: float = 2.0
     weight_rating: float = 0.05
-    # Shortlist depth handed to the reranker. Deeper costs latency for little
-    # gain once recall@100 is already 88%.
-    rerank_depth: int = 100
+    # Shortlist depth handed to the reranker. This interacts with the
+    # truncation width above: effective depth is min(rerank_depth, width), so
+    # anything past truncate_buying (200) only affects Browsing turns.
+    #
+    # Swept twice, and the answer REVERSED once exact phrase overlap existed.
+    # Before it, depth 200 bought composite at the cost of MRR. After it:
+    #
+    #     100  0.8540  hit 0.919  mrr 0.804  mttc 3.33
+    #     200  0.8951  hit 0.975  mrr 0.790  mttc 2.48
+    #     400  0.8737  hit 0.975  mrr 0.704  mttc 2.24
+    #     800  0.8670  hit 0.981  mrr 0.664  mttc 2.14
+    #
+    # Every remaining miss at depth 100 was a target sitting in the candidate
+    # pool beyond rank 100, never reranked and so never given its phrase
+    # evidence. Widening to 200 rescues them. Past 200 the extra candidates
+    # dilute rank one faster than they add hits.
+    rerank_depth: int = 200
 
     # ---- language, role 3, off by default ----------------------------------
     # The organiser may score us with networking disabled, so every LLM path
