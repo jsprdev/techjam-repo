@@ -47,6 +47,7 @@ from src.policy.commit import decide
 from src.policy.intent import route
 from src.rank import PriorRanker
 from src.retrieval import TfidfRetriever
+from src.language import rerank as llm_rerank
 from src.state import Slots
 from src.state.session import SessionContext, TurnRecord
 from src.trace import SINK, TurnTrace
@@ -211,6 +212,25 @@ class Agent:
             )
 
         ranked = belief.ranking() or self._fallback(top_k)
+
+        # Spec 6.5, the live semantic rerank. Off unless Config.use_llm is set,
+        # because official scoring may run with networking disabled. It sees the
+        # shortlist and what the customer said, and proposes an ordering; the
+        # belief ordering above is what ships if it is unavailable, times out or
+        # replies with nonsense. Per the layer boundary it never sets the belief
+        # and never decides whether to commit, so a confident model cannot
+        # override a confident belief, only reorder what the belief surfaced.
+        rerank_usage = (0, 0)
+        if self.config.use_llm and ranked:
+            outcome = llm_rerank.rerank(
+                slots.constraints(),
+                [(asin, self.catalog.text(asin)) for asin in ranked[: TOP_K * 2]],
+                self.config,
+            )
+            if outcome.used_llm:
+                ranked = outcome.order + ranked[len(outcome.order) :]
+                rerank_usage = (outcome.prompt_tokens, outcome.completion_tokens)
+
         attribute = slots.pick_attribute()
         message = phrase_question(
             attribute,
@@ -261,6 +281,10 @@ class Agent:
             message=message,
             ask_attribute=attribute,
             recommendations=ranked[: max(top_k, TOP_K)],
+            # Token usage is a required disclosure. Zero when the rerank is off,
+            # which is the default, so the reported total is honest either way.
+            prompt_tokens=rerank_usage[0],
+            completion_tokens=rerank_usage[1],
         )
 
     def _fallback(self, top_k: int) -> list[str]:
