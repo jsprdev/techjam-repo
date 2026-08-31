@@ -1,10 +1,13 @@
 .DS_Store
-# Frozen competition data. Fetched via the participant kit, never committed.
+
+# Frozen competition data. Fetched from the participant kit release, never committed.
 data/
-# Derived tables and caches produced by offline/ scripts.
+
+# Derived tables, eval results, sweep output and caches.
 artifacts/
 
 __pycache__/
 *.pyc
+.pytest_cache/
 .venv/
 results.json
