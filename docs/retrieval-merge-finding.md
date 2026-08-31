@@ -61,3 +61,40 @@ The first merge attempt kept the field-aware retriever and substituted the belie
 result was identical to the retrieval branch on all 200 sessions. His retriever applies its
 phrase boost *before* truncation, so the top ten is already fixed by the time any reranker
 runs. A reranker cannot recover precision that retrieval has already discarded.
+
+
+## Second attempt: fusing the two routes
+
+Since the 0.988 was a recall win and the MRR loss was a ranking loss, the obvious next move
+was to run both routes and take the union, ordering by the pooled route so the field route
+could contribute candidates without contributing its ordering. That is also the multi-route
+retrieval Pillar I names.
+
+It did not work. The field route contributed no recall the pooled route had not already
+found, and every slot given to it cost MRR:
+
+| configuration | Score | HitRate@10 | MRR | MTTC |
+| --- | --- | --- | --- | --- |
+| pooled only, boost off | **0.8951** | 0.975 | **0.790** | 2.48 |
+| fusion, 5% of slots reserved | 0.8940 | 0.975 | 0.782 | 2.40 |
+| fusion, 25% reserved | 0.8865 | 0.975 | 0.755 | 2.37 |
+| fusion, 25% reserved, boost on | 0.8594 | 0.969 | 0.668 | 2.27 |
+| fusion, 40% reserved | 0.8583 | 0.969 | 0.664 | 2.27 |
+
+HitRate never moved above 0.975 in any fused configuration. The 0.988 the field-aware branch
+reached is not extra recall that fusion can borrow: it comes from the field route DRIVING the
+final ordering, which is the same thing that costs 0.175 of MRR. The two are the same
+mechanism seen from two sides, and they are not separable.
+
+Arithmetically that operating point is worse for us: +0.013 HitRate at weight 0.50 is worth
++0.0065, while -0.175 MRR at weight 0.30 costs -0.0525. A net loss of about 0.046.
+
+## What shipped
+
+The pooled configuration, which measures 0.8951 on train and 0.8931 through the official
+harness on all 200 sessions.
+
+The field-aware code is kept, not deleted. Every per-field weight defaults to 0.0 and a field
+with zero weight is never indexed, so the six unused matrices cost nothing: construction is
+17.9 seconds. Anyone who wants to revisit this sets the weights and re-sweeps, with this
+table as the baseline to beat.

@@ -24,25 +24,35 @@ class Config:
     # Field weights for the lexical index. Title and features carry the phrases
     # the simulated customer actually repeats, so they dominate. Raising
     # description weight pulls in long boilerplate and tends to hurt.
-    weight_title: float = 3.0
-    weight_features: float = 2.5
-    weight_categories: float = 2.0
-    weight_description: float = 1.0
-    weight_store: float = 1.5
+    weight_title: float = 0.0
+    weight_features: float = 0.0
+    weight_categories: float = 0.0
+    weight_description: float = 0.0
+    weight_store: float = 0.0
 
-    # From the field-aware retrieval work. weight_details covers the free-form
-    # details dict, which is a distinct field from the five above.
-    weight_details: float = 1.0
+    # Per-field weights, all DEFAULTED OFF after measurement. The field-aware
+    # route is kept and works, but every mixing ratio tested scored at or below
+    # the pooled index alone. See docs/retrieval-merge-finding.md. A field whose
+    # weight is zero is not indexed at all, so this costs nothing at runtime.
+    weight_details: float = 0.0
 
     # Weight of the pooled all-fields index inside the field-weighted sum.
     # 0.0 gives pure per-field behaviour, high values approach a single pooled
     # index. Swept, because the two schemes trade MRR against MTTC.
-    weight_pooled: float = 3.0
+    weight_pooled: float = 1.0
+
+    # Multi-route retrieval. The field-aware route finds targets the pooled
+    # route misses (HitRate 0.988 against 0.975) but orders them badly, so the
+    # union is taken and the pooled route supplies the ordering.
+    fuse_field_route: bool = False
+    # Fraction of the k slots reserved for items only the field route found.
+    # 0.0 disables fusion entirely; too high starves the pooled route.
+    fuse_reserve: float = 0.25
 
     # Phrase boost applied inside RETRIEVAL, distinct from exact_phrase_boost
     # which the ranker applies to the shortlist. Retrieval boosts a whole
     # disclosed phrase before truncation; the ranker boosts it after.
-    retrieval_exact_phrase_boost: float = 2.0
+    retrieval_exact_phrase_boost: float = 0.0
 
     # Multiplier applied when a whole disclosed phrase appears verbatim in a
     # product's text. The customer quotes the target's own record, so exact
