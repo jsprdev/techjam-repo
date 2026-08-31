@@ -1,0 +1,8 @@
+# Runtime dependencies. Deliberately small: the organiser may score us under
+# CPU, memory and network restrictions, so nothing here downloads anything at
+# import or at run time.
+numpy>=1.26
+scikit-learn>=1.4
+
+# Development only. Not needed to run the agent in the official harness.
+pytest>=8.0
