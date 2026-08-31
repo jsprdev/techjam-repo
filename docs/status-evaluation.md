@@ -1,5 +1,10 @@
 # Status evaluation: every requirement, against what exists
 
+> **Superseded by `docs/consolidation.md`.** Kept for history. This audit predates
+> the offline semantic prior and the live reranker (`docs/llm-semantic-stage.md`),
+> so every "Pillar I LLM stage: MISSING" row below is now out of date, and the
+> score has moved. Read consolidation first.
+
 Written after the score plateaued at 0.8951 on the train split. Audits the code against the
 organiser's brief (`problem-statement.md`), our own build spec
 (`techjam-detailed-agent-spec.md`), and the four-role plan (`docs/build-plan.md`).

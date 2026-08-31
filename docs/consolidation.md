@@ -1,6 +1,10 @@
 # Consolidation: what was built, why, what is left
 
-Last verified 31 August 2026 against `main` at `d476b36`.
+Last verified 31 August 2026 against `main` at `d476b36`. Section 4.11 (profile
+preference-tags in the ranker: considered, measured, not merged) added
+afterwards on this machine, which reproduces a train baseline of 0.8963 and an
+all-200 official score of 0.892323 rather than the 0.893583 recorded below; see
+the note at the end of section 1.
 
 This is the single document to read if you are picking the project up, joining
 it, or judging it. It supersedes nothing: `docs/handoff.md`,
@@ -18,11 +22,19 @@ Everything below was re-run, not recalled from memory.
 | Check | Result |
 | --- | --- |
 | All remote branches enumerated, unmerged commits found | 3 branches ahead of `main`, all accounted for in section 3 |
-| Test suite on `main` | 89 passed |
+| Test suite on `main` | 89 passed (94 after the section 4.11 work) |
 | Offline probe (`evaluation/verify_offline.py`) | PASS, 10 turns with every socket blocked |
 | Official evaluator on `main` | TechnicalScore **0.893583**, 1 minute 40 seconds |
 | Fresh clone, judge simulation | identical 0.893583, so nothing depends on this working copy |
 | Working tree | clean, no uncommitted changes |
+
+**Baseline reproduction, added later.** `requirements.txt` pins nothing
+(`numpy>=1.26`, `scikit-learn>=1.4`). On a machine with numpy 2.5.2 / scikit-learn
+1.9.0 the same commit scores **0.892323** on all 200 (MRR 0.7754 vs 0.7796,
+browsing MRR 0.6706 vs 0.675) — TF-IDF tie-breaks shift with the sklearn version.
+Sweep *deltas* on one machine are still valid; comparing an absolute score to the
+0.893583 above is not, until the versions that produced it are pinned. This is a
+project-wide housekeeping item, not a regression.
 
 Headline numbers from the official run:
 
@@ -179,7 +191,7 @@ zero is not indexed at all, so it costs nothing at runtime. If someone improves
 the field weighting, turning it on is a config change, not a rewrite. Full sweep
 in `docs/retrieval-merge-finding.md`.
 
-### 4.8 Six ideas were measured and rejected
+### 4.8 Seven ideas were measured and rejected
 
 Recorded so nobody re-tries them without new information:
 
@@ -192,6 +204,9 @@ Recorded so nobody re-tries them without new information:
 6. **Three parser "improvements"** that each read as obvious and each lost
    score: dropping "no additional preference" replies (0.7369 against 0.7422 for
    keeping them), deduplicating repeated phrases, and a narrower opening regex.
+7. **Profile preference-tags in the ranker.** Section 4.11. Monotonically
+   negative with the full tag set; a noise-band spike with the discriminating
+   subset. Prototype and tests removed; nothing shipped.
 
 The "no preference" result is worth remembering. Those replies look like pure
 noise, but their tokens carry almost no inverse document frequency, so removing
@@ -222,6 +237,30 @@ Feasibility argument, which is 15% of the grade.
 was made on the other 160. The held-out curve is worth more to a judge than the
 score itself, and it is only worth something if it is spent once.
 
+### 4.11 Profile preference-tags feed retrieval but not ranking
+
+Pillar III (spec 7.1) asks for the profile to be distilled into "retrieval **and
+ranking**". The retrieval half is already there: `state/slots.py` appends the
+buyer's `preference_tags` to the query, and removing them costs 0.037. The
+ranking half is not, because `rank/baseline.py::believe()` receives `profile` and
+never reads it.
+
+A prototype ranking term was built to close that: it scored a shortlist candidate
+by how many of the buyer's tags (word-bounded, expanded to the words that occur
+in the catalog) appear in its text. Swept on the 160 train sessions. The full
+tag set is **monotonically negative** (0.8963 at 0.0, 0.8931 at 0.1, 0.827 at
+2.0): the generic tags `material`, `comfort`, `style` match nearly everything and
+dilute the verbatim phrase evidence. Restricting to the four discriminating tags
+(`durability`, `performance`, `warmth`, `weather`) turns it marginally positive
+at low weight, peaking at 0.8982 at weight 0.25, but that is a single-cell spike
+with no plateau, so shipping it would be fitting the argmax on 160 sessions.
+
+**The prototype, its config field and its tests were removed.** Nothing shipped;
+the score is unchanged. Full tables and the mechanism in
+`docs/retrieval-merge-finding.md`. The retrieval half stays; the honest position
+for the writeup is that the profile informs retrieval and there was no ranking
+gain to be had on top of it.
+
 ---
 
 ## 5. Honest weaknesses
@@ -242,7 +281,8 @@ Stated plainly, because a judge will find them anyway.
   target was in the candidate pool every single time. The ceiling here is
   ordering, not recall.
 - **Browsing MRR (0.675) trails buying MRR (0.828) by a wide margin.** Open-ended
-  sessions are where the remaining points are.
+  sessions are where the remaining points are. One attempt at it, feeding the
+  buyer's profile tags into the ranker, was measured and rejected (section 4.11).
 - **We tuned against a deterministic simulator.** The 800 private sessions use
   different users and different target products. Decisions that exploit the
   simulator's verbatim-quoting habit may transfer less well than the training
