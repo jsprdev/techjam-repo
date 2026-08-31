@@ -38,9 +38,26 @@ class Config:
 
     # ---- dialogue, role 2 --------------------------------------------------
     # Weight decay applied to a constraint per turn since it was last
-    # reinforced. 1.0 disables decay. Lower values let a turn eight statement
-    # outrank a turn one inference, which matters for Intent Override.
-    slot_decay: float = 0.9
+    # reinforced. 1.0 disables decay and reproduces the pre-decay ranking
+    # exactly. Lower values let a turn eight statement outrank a turn one
+    # inference, which is what Intent Override needs.
+    #
+    # Read by `Slots.constraint_weights`, consumed by the ranker's phrase
+    # evidence term. It does NOT reweight the retrieval query: retrieval takes a
+    # plain string and the only way to weight a bag of words is repetition,
+    # which collides with the measured finding that repetition is already
+    # signal. See the note on `constraint_weights`.
+    slot_decay: float = 1.0
+
+    # How far a constraint the customer pivoted away from is demoted. 1.0 keeps
+    # it at full strength, 0.0 is literal slot erasure.
+    #
+    # Not 0.0, and that is a measured decision rather than a soft reading of the
+    # brief. In 28 of the 30 public intent_override sessions the preference the
+    # customer says to ignore is itself lifted from the target product's own
+    # record and appears verbatim in that product's text, so erasing it deletes
+    # true evidence. Reproduce with evaluation/override_audit.py.
+    override_demote: float = 0.5
 
     # Discard "I don't have an additional preference for X" style replies
     # instead of feeding them to retrieval. MEASURED FALSE: dropping them
@@ -60,10 +77,47 @@ class Config:
     # price history, so this is worth measuring rather than assuming.
     use_profile_tags: bool = True
 
-    # Entropy above which the belief counts as too flat to commit, triggering
-    # the over-generality cutoff and a clarifying question instead of a weak
-    # list. Raise it to ask less often.
-    flat_belief_entropy: float = 0.85
+    # Normalised belief entropy above which the candidate pool counts as
+    # overloaded, triggering the over-generality cutoff in src/policy/commit.py.
+    # Raise it to cut off less often.
+    #
+    # Set from the observed distribution rather than guessed, because a
+    # threshold below what the system actually produces is not a cutoff, it is
+    # the default branch. See evaluation/self_evolution.py for the per turn
+    # distribution this number was read off.
+    flat_belief_entropy: float = 0.92
+
+    # ---- routing and commit policy, role 2 ---------------------------------
+    # How much a Buying or Browsing cue in the wording moves the routing score
+    # away from an undecided 0.5. Only consulted when no opener matched.
+    intent_cue_weight: float = 0.15
+    # How much each accumulated constraint pushes the turn towards Buying,
+    # counted up to three. Constraints are the clearest sign a session has
+    # converged, so this is the heaviest single signal.
+    intent_constraint_weight: float = 0.2
+    # How much belief flatness pushes the turn back towards Browsing, measured
+    # as the gap between current entropy and `flat_belief_entropy`. Entropy
+    # spans a narrow band in practice, so this needs a large multiplier to
+    # matter at all.
+    intent_entropy_weight: float = 2.0
+
+    # Shortlist depth and belief sharpening per track. Both default to the
+    # untracked behaviour so that turning routing on changes nothing until these
+    # are moved, which is what makes the routing ablation honest.
+    track_depth_buying: int = 200
+    track_depth_browsing: int = 200
+    track_sharpen_buying: float = 1.0
+    track_sharpen_browsing: float = 1.0
+
+    # Share of the belief mass the best candidate must hold before the agent
+    # presents its list as a recommendation rather than a clarification. Read
+    # off the training distribution: sessions that hit at rank one carry a
+    # median peak share of 0.089, those that hit lower down 0.065.
+    commit_peak_share: float = 0.10
+    # Shortlist depth used on a turn where the over-generality cutoff fired.
+    # This is the "immediate retrieval cutoff" of Pillar II: the wide low
+    # confidence pool is cut at source rather than suppressed in the answer.
+    overload_depth: int = 200
 
     # Whether to fall back to the catch-all `other` attribute once specific
     # asks stop yielding new constraints. Effective, but reads as a worse

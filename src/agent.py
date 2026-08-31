@@ -1,13 +1,27 @@
 """The entry class the official evaluator imports. OWNED BY ROLE 3.
 
-Thin orchestration only. It sequences the four modules and owns the turn
-counter, nothing else. Logic belongs in the modules.
+Thin orchestration only. It sequences the modules and owns the turn counter,
+nothing else. Logic belongs in the modules.
+
+The per turn pipeline, and the pillar each stage answers:
+
+    route     src/policy/intent.py    Buying or Browsing, chosen fresh    I, III
+    retrieve  src/retrieval/          lexical candidates at track width   I
+    believe   src/rank/               evidence blended into a belief      I, III
+    decide    src/policy/commit.py    over-generality cutoff, commit      II
+    ask       src/state/slots.py      which attribute buys the most       II
+    phrase    src/language/phrase.py  the sentence, grounded              II
+
+Nothing in that sequence is fixed at session start. The track, the truncation
+width, the shortlist depth and the ask are all re-selected every turn from the
+current state, which is the honest reading of Pillar III's Adaptive
+Orchestration.
 
 Two guarantees this file must never lose, both worth a whole session each:
 
 1. It never raises. The evaluator catches exceptions and substitutes an empty
-   response, so a crash silently costs every remaining turn of that session.
-   The broad except below is deliberate, not laziness.
+   response, so a crash silently costs every remaining turn of that session. The
+   broad except below is deliberate, not laziness.
 2. It never exceeds ten turns. The rules make exceeding the cap a forced
    termination and a zero, and the instruction is to enforce it ourselves rather
    than trust the harness.
@@ -15,7 +29,8 @@ Two guarantees this file must never lose, both worth a whole session each:
 It also always returns recommendations. There is no penalty for guessing
 alongside a question, the evaluator checks recommendations for a hit before it
 reads `ask_attribute`, and a session can only end favourably by surfacing the
-target. Never return an empty list.
+target. Never return an empty list, and never shorten one to trade MRR against
+MTTC.
 """
 
 from __future__ import annotations
@@ -27,10 +42,19 @@ from src import catalog as catalog_module
 from src import response as response_module
 from src.config import Config
 from src.interfaces import MAX_TURNS, TOP_K
+from src.language import question as phrase_question
+from src.policy.commit import decide
+from src.policy.intent import route
 from src.rank import PriorRanker
 from src.retrieval import TfidfRetriever
 from src.state import Slots
+from src.state.session import SessionContext, TurnRecord
 from src.trace import SINK, TurnTrace
+
+# How many of the top candidates the question phrasing is grounded in. Wide
+# enough that the options offered reflect the shortlist rather than one product,
+# narrow enough that it does not describe items the customer will never see.
+GROUNDING_WIDTH = 5
 
 
 class Agent:
@@ -47,7 +71,7 @@ class Agent:
         self.catalog = catalog_module.load(catalog_path)
         self.retriever = TfidfRetriever(self.catalog, self.config)
         self.ranker = PriorRanker(self.catalog, self.config)
-        self._sessions: dict[str, Slots] = {}
+        self._sessions: dict[str, SessionContext] = {}
 
     def set_config(self, config: Config) -> None:
         """Adopt new tuning parameters without rebuilding the index.
@@ -87,7 +111,9 @@ class Agent:
         slots.profile = profile
         # Rebinding rather than mutating guarantees no state survives a reset,
         # since one Agent instance serves every session sequentially.
-        self._sessions[str(session_id)] = slots
+        self._sessions[str(session_id)] = SessionContext(
+            session_id=str(session_id), slots=slots
+        )
 
     def respond(
         self,
@@ -144,23 +170,66 @@ class Agent:
                 recommendations=self._fallback(top_k),
             )
 
-        slots = self._sessions.get(session_id)
-        if slots is None:
+        session = self._sessions.get(session_id)
+        if session is None:
             # reset was skipped. Recover rather than raise, unlike the starter.
             self.reset(session_id, {})
-            slots = self._sessions[session_id]
+            session = self._sessions[session_id]
+        slots = session.slots
 
         slots.observe(user_message, turn)
+        session.raw_chars += len(user_message or "")
         query = slots.to_query()
-        width = self._truncation_width(slots)
-        candidates = self.retriever.retrieve(query, width)
-        ranked = self.ranker.rank(candidates, slots, slots.profile)
-        if not ranked:
-            ranked = self._fallback(top_k)
 
+        track = route(
+            message=user_message or "",
+            constraint_count=len(slots.constraints()),
+            previous_entropy=session.last_entropy,
+            config=self.config,
+        )
+        candidates = self.retriever.retrieve(query, track.width)
+        belief = self.ranker.believe(
+            candidates, slots, slots.profile, depth=track.depth, sharpen=track.sharpen
+        )
+        decision = decide(belief, track.depth, self.config)
+        if decision.depth != track.depth:
+            # The over-generality cutoff. Rerank the narrower shortlist rather
+            # than trimming the answer, so the wide low confidence pool is cut
+            # off at source and the list the customer sees stays full length.
+            belief = self.ranker.believe(
+                candidates,
+                slots,
+                slots.profile,
+                depth=decision.depth,
+                sharpen=track.sharpen,
+            )
+
+        ranked = belief.ranking() or self._fallback(top_k)
         attribute = slots.pick_attribute()
-        message = self._phrase(attribute)
+        message = phrase_question(
+            attribute,
+            [self.catalog.text(asin) for asin in ranked[:GROUNDING_WIDTH]],
+            decision.overloaded,
+        )
 
+        session.record(
+            TurnRecord(
+                turn=turn,
+                track=track.name,
+                track_confidence=round(track.confidence, 4),
+                width=track.width,
+                depth=decision.depth,
+                entropy=decision.entropy,
+                peak_share=decision.peak_share,
+                overloaded=decision.overloaded,
+                committed=decision.commit,
+                asked=attribute,
+                constraints=len(slots.constraints()),
+                retired=len(slots.retired_attributes),
+                raw_chars=session.raw_chars,
+                distilled_chars=len(query),
+            )
+        )
         SINK.record(
             TurnTrace(
                 session_id=session_id,
@@ -171,6 +240,15 @@ class Agent:
                 candidate_count=len(candidates),
                 top_recommendations=ranked[:TOP_K],
                 elapsed_ms=(time.perf_counter() - started) * 1000.0,
+                extra={
+                    "track": track.name,
+                    "track_confidence": round(track.confidence, 4),
+                    "width": track.width,
+                    **decision.as_trace(),
+                    "pivot": turn in slots.pivot_turns,
+                    "retired": sorted(slots.retired_attributes),
+                    "compression": round(session.compression(), 4),
+                },
             )
         )
         return response_module.build(
@@ -178,24 +256,6 @@ class Agent:
             ask_attribute=attribute,
             recommendations=ranked[: max(top_k, TOP_K)],
         )
-
-    def _truncation_width(self, slots: Slots) -> int:
-        """Dynamic truncation. ROLE 2 owns the routing that decides this.
-
-        Placeholder heuristic: once a couple of constraints are in hand the
-        session looks like Buying, so narrow. Before that keep the pool wide so
-        open ended Browsing can still reach across categories.
-        """
-        if len(slots.constraints()) >= 2:
-            return self.config.truncate_buying
-        return self.config.truncate_browsing
-
-    def _phrase(self, attribute: str | None) -> str:
-        """PLACEHOLDER wording. ROLE 3 owns making this sound human."""
-        if attribute is None:
-            return "Here are the closest matches I found."
-        readable = attribute.replace("_", " ")
-        return f"Here are some options. Any preference on {readable}?"
 
     def _fallback(self, top_k: int) -> list[str]:
         """Most reviewed products, used when retrieval returns nothing.
