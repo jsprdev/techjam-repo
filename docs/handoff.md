@@ -3,6 +3,30 @@
 Written overnight after day 1. Read your own section, then `phase0-findings.md` for the
 evidence behind any claim you want to challenge.
 
+## Since this was written
+
+Every number below is from day 1 and is now stale by about 0.11 of score. The current state
+is the README, `docs/status-evaluation.md` and `python evaluation/run_eval.py`. What has
+landed since, and what it means for your section:
+
+- The train split now reads **0.8951**, not 0.7889. `exact_phrase_boost`, the popularity
+  prior and the ask ordering are all tuned and swept; `artifacts/sweep_*.json` holds the
+  curves. Assume the easy tuning is spent.
+- `src/policy/` and `src/language/` exist. Routing, the over-generality cutoff and question
+  selection moved out of `agent.py` and `slots.py` into their own modules.
+- **Role 1 is untouched and still yours.** `src/retrieval/`, `src/catalog.py` and the five
+  `weight_*` fields have no new readers. Two things beneath you did change and neither
+  breaks the seam: `PriorRanker.rank` is now one line over `PriorRanker.believe`, which
+  returns a `Belief` rather than a list, and `believe` takes optional `depth` and `sharpen`
+  arguments that default to the old behaviour. `Retriever.retrieve` is unchanged.
+- `SlotState` gained `constraint_weights()`, aligned with `constraints()`, carrying each
+  phrase's recency and override weight. The ranker reads it. If you build a retriever that
+  can take per-term weights, that is where the weights already are.
+- `INDEX_FIELDS` in `evaluation/sweep.py` still matters exactly as described below.
+- `run_eval.py --traces` now writes a list of sessions, each with its `sample_id`, outcome
+  and turns, rather than a dict keyed by the random session id. A trace can finally be joined
+  to the result it produced.
+
 ## Where things stand
 
 The pipeline runs end to end through the official command and scores **0.7889** on all 200
