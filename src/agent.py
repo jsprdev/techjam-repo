@@ -49,6 +49,25 @@ class Agent:
         self.ranker = PriorRanker(self.catalog, self.config)
         self._sessions: dict[str, Slots] = {}
 
+    def set_config(self, config: Config) -> None:
+        """Adopt new tuning parameters without rebuilding the index.
+
+        The sweep harness runs many variants against one built index, and
+        reaching into `agent.ranker.config` from outside is fragile: the moment
+        a module starts caching a value from config, or a new component appears,
+        an external caller silently tunes nothing and the sweep reports a wrong
+        number. Propagation belongs here, next to the components.
+
+        Only safe for fields that do not change the index. Index-affecting
+        fields are listed in `evaluation/sweep.py:INDEX_FIELDS` and force a
+        rebuild instead.
+        """
+        self.config = config
+        self.retriever.config = config
+        self.ranker.config = config
+        # Live sessions keep the config they were reset with, which is correct:
+        # changing tuning mid-session would make a run uninterpretable.
+
     def reset(self, session_id: str, user_profile: dict) -> None:
         """Start a fresh session. MUST NEVER RAISE.
 
@@ -81,6 +100,26 @@ class Agent:
         try:
             return self._respond(session_id, user_message, turn, top_k, started)
         except Exception:  # noqa: BLE001 - a crash costs the whole session
+            if self.config.strict_errors:
+                # Tests and the offline probe opt in to this. Without it, a
+                # totally broken pipeline still returns a contract-legal list
+                # and every assertion downstream passes on the fallback.
+                raise
+            # Record the fallback too. Traces that silently omit failed turns
+            # make latency and failure rate look better than they are.
+            SINK.record(
+                TurnTrace(
+                    session_id=session_id,
+                    turn=turn,
+                    user_message=user_message,
+                    query="",
+                    ask_attribute="other",
+                    candidate_count=0,
+                    top_recommendations=[],
+                    elapsed_ms=(time.perf_counter() - started) * 1000.0,
+                    extra={"fallback": True},
+                )
+            )
             return response_module.build(
                 message="Let me keep looking. Could you tell me more about what you need?",
                 ask_attribute="other",

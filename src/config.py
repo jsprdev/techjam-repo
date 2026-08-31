@@ -42,6 +42,24 @@ class Config:
     # outrank a turn one inference, which matters for Intent Override.
     slot_decay: float = 0.9
 
+    # Discard "I don't have an additional preference for X" style replies
+    # instead of feeding them to retrieval. MEASURED FALSE: dropping them
+    # scores 0.7369 against 0.7422 for keeping them, on the 160 train sessions.
+    # The intuition that they are pure noise is wrong, or at least too small to
+    # detect: their tokens are near-universal and carry almost no idf, so
+    # removing them mostly just shortens the query.
+    drop_no_information: bool = False
+
+    # Collapse a repeated constraint into one occurrence. Off, because the
+    # customer repeating something is signal: the repetition raises its term
+    # frequency in the query, which is the behaviour we want.
+    dedupe_phrases: bool = False
+
+    # Append the profile's preference_tags to the query. They are vague ("fit",
+    # "comfort") and Phase 0 found the profile carries no brand, category or
+    # price history, so this is worth measuring rather than assuming.
+    use_profile_tags: bool = True
+
     # Entropy above which the belief counts as too flat to commit, triggering
     # the over-generality cutoff and a clarifying question instead of a weak
     # list. Raise it to ask less often.
@@ -55,7 +73,19 @@ class Config:
     # ---- ranking, role 3 ---------------------------------------------------
     # Priors blended into the final ordering. Popularity is a genuinely strong
     # baseline in leave-last-out Amazon benchmarks, so it earns real weight.
-    weight_popularity: float = 0.15
+    #
+    # PROVISIONAL, set by role 4 from a sweep, owned by role 3. Swept 0.0 to 5.0
+    # over the 160 train sessions (artifacts/sweep_popularity.json and
+    # sweep_pop_extended.json): the curve is unimodal, rising from 0.4608 at 0.0
+    # to a plateau of about 0.743 across 1.5 to 3.0, then falling to 0.7176 at
+    # 5.0. 2.0 is the middle of that plateau rather than its exact argmax,
+    # because 1.5, 2.0 and 3.0 differ by less than 0.005 and picking the argmax
+    # would be fitting noise on 160 sessions.
+    #
+    # It is not degenerate: evaluation/check_degeneracy.py shows unrelated
+    # queries still return completely disjoint top tens even at weight 20,
+    # because the prior only reorders a shortlist retrieval already filtered.
+    weight_popularity: float = 2.0
     weight_rating: float = 0.05
     # Shortlist depth handed to the reranker. Deeper costs latency for little
     # gain once recall@100 is already 88%.
@@ -66,6 +96,13 @@ class Config:
     # must be opt in and must degrade to the deterministic ordering.
     use_llm: bool = False
     llm_timeout_seconds: float = 8.0
+
+    # Re-raise instead of falling back to the popularity list when a turn
+    # fails. Production keeps this False, because a crash costs a whole session
+    # and a degraded answer still might hit. Tests and the offline probe set it
+    # True, because the blanket fallback otherwise makes them unfalsifiable: a
+    # completely dead pipeline still returns a contract-legal popular list.
+    strict_errors: bool = False
 
     # ---- platform, role 4 --------------------------------------------------
     # Sessions reserved from tuning. Never fit against these; the held out

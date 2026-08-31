@@ -1,36 +1,50 @@
-"""v0 ranker. OWNED BY ROLE 3, this is your starting point.
+"""Reranking the shortlist. ROLE 3, owns MRR.
 
-Passes retrieval order through, nudged by a popularity prior. That prior is not
-arbitrary: in leave-last-out Amazon benchmarks, popularity baselines are
-competitive with far more sophisticated models, because real purchases
-concentrate on popular items.
+Two signals beyond the retrieval score.
 
-Role 3's job is the reranker that turns 67% at rank ten into a high MRR, which
-is 30% of the score. Phase 0 says the strongest available feature is exact
-phrase overlap between the customer's disclosed constraints and a product's own
-text, because the customer quotes that text verbatim. Also available: category
-path agreement, rating, and price band.
+Popularity, because in leave-last-out Amazon benchmarks popularity baselines are
+competitive with far more sophisticated models: real purchases concentrate on
+popular items. Swept, and worth more than anything else in the system.
 
-Whatever you add stays deterministic. An LLM rerank may sit behind
-`Config.use_llm`, which defaults to off, because the organiser may score us with
-networking disabled.
+Exact phrase overlap, because the simulated customer's constraints are lifted
+verbatim from the target product's own `features` and `details`. A whole-phrase
+hit is therefore near-oracle evidence, and much stronger than the bag-of-words
+similarity that put the candidate on the shortlist in the first place.
+
+Deterministic throughout. Official scoring may run with networking disabled, so
+an LLM rerank can only ever sit behind `Config.use_llm`, which defaults to off.
 """
 
 from __future__ import annotations
 
 import math
 
-from src.catalog import Catalog
+from src.catalog import Catalog, product_text
 from src.config import Config
 from src.interfaces import Candidate, SlotState
 
+# A phrase shorter than this matches too much to be evidence of anything.
+MIN_PHRASE_CHARS = 4
+
 
 class PriorRanker:
-    """Retrieval score blended with a log popularity prior."""
+    """Retrieval score blended with a popularity prior and phrase evidence."""
 
     def __init__(self, catalog: Catalog, config: Config | None = None) -> None:
         self.catalog = catalog
         self.config = config or Config()
+        # Lowercased product text, built lazily and only for products that
+        # actually reach a shortlist. Precomputing all 50,000 would add seconds
+        # to construction for text most sessions never look at.
+        self._lowered: dict[str, str] = {}
+
+    def _text(self, parent_asin: str) -> str:
+        cached = self._lowered.get(parent_asin)
+        if cached is None:
+            product = self.catalog.get(parent_asin)
+            cached = product_text(product).lower() if product else ""
+            self._lowered[parent_asin] = cached
+        return cached
 
     def rank(
         self,
@@ -40,22 +54,38 @@ class PriorRanker:
     ) -> list[str]:
         if not candidates:
             return []
+
         shortlist = candidates[: self.config.rerank_depth]
-        best = max(score for _, score in shortlist) or 1.0
+        best = max((score for _, score in shortlist), default=0.0) or 1.0
+
+        phrases = [
+            phrase.lower()
+            for phrase in slots.constraints()
+            if len(phrase) >= MIN_PHRASE_CHARS
+        ]
+        boost = self.config.exact_phrase_boost
+
         scored: list[tuple[float, str]] = []
         for parent_asin, score in shortlist:
             product = self.catalog.get(parent_asin)
             if product is None:
                 continue
-            # Normalise retrieval score so the priors stay comparable across
-            # queries of different lengths.
             total = score / best
+
             ratings = product.get("rating_number") or 0
             total += self.config.weight_popularity * math.log1p(float(ratings)) / 12.0
+
             average = product.get("average_rating")
             if isinstance(average, (int, float)):
                 total += self.config.weight_rating * (float(average) / 5.0)
+
+            if phrases and boost:
+                text = self._text(parent_asin)
+                hits = sum(1 for phrase in phrases if phrase in text)
+                total += boost * (hits / len(phrases))
+
             scored.append((total, parent_asin))
+
         scored.sort(key=lambda pair: -pair[0])
         tail = [asin for asin, _ in candidates[self.config.rerank_depth :]]
         return [asin for _, asin in scored] + tail

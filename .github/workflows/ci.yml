@@ -1,0 +1,46 @@
+name: CI
+
+# The contract test has to run on every merge, not just when somebody remembers.
+# A broken response envelope is silent: the evaluator swallows it and scores the
+# turn empty, so nothing in the score breakdown says why.
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # test_entry_point also runs `git status` on the evaluator directory,
+          # which needs a real working tree rather than an export.
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: pip install -r requirements.txt
+
+      - name: Tests
+        run: pytest
+
+      - name: Offline verification
+        # Needs the 58 MB catalog, which is not always present in a checkout.
+        # Skip rather than fail, and say which happened.
+        run: |
+          if [ -f techjam-conversational-search/data/catalog.jsonl ]; then
+            python evaluation/verify_offline.py
+          else
+            echo "catalog.jsonl absent, skipping the offline probe"
+          fi
+
+      # The evaluator-unmodified check lives in tests/test_entry_point.py and
+      # pins the pristine file hashes. A `git diff origin/main` step here would
+      # be worse than nothing: under actions/checkout the remote-tracking ref is
+      # often absent, so it passes vacuously, and it cannot see a tampered file
+      # that was committed to main itself.

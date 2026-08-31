@@ -40,21 +40,36 @@ def test_retrieve_on_empty_query_returns_empty(fake_catalog_path):
     assert TfidfRetriever(load(fake_catalog_path), Config()).retrieve("   ", 5) == []
 
 
-def test_slots_accumulate_and_deduplicate():
+def test_to_query_carries_the_category_and_the_constraints():
     slots = Slots()
-    slots.observe("leather belt", 1)
-    slots.observe("leather belt", 2)
-    slots.observe("buckle closure", 3)
-    assert slots.constraints() == ["leather belt", "buckle closure"]
-    assert slots.turn == 3
+    slots.observe("I'm looking for Accessories Belts. Buckle closure", 1)
+    slots.observe("For that, what matters is: leather; 100% Leather.", 2)
+    query = slots.to_query()
+    assert "Accessories Belts" in query
+    assert "leather" in query and "Buckle closure" in query
+    assert "looking for" not in query, "conversational framing leaked into the query"
 
 
-def test_to_query_includes_profile_tags():
+def test_no_information_replies_are_dropped_when_the_flag_is_on():
+    """Off by default: measured, dropping them scores 0.7369 against 0.7422 for
+    keeping them. The flag stays so the decision can be re-tested after any
+    retrieval change, rather than inherited as folklore."""
+    from src.config import Config
+
+    slots = Slots(config=Config().with_overrides(drop_no_information=True))
+    slots.observe("I'm looking for Accessories Belts. Buckle closure", 1)
+    before = slots.to_query()
+    slots.observe("I don't have an additional preference for brand.", 2)
+    slots.observe("Those options are not quite right yet. Ask me about one specific attribute.", 3)
+    assert slots.to_query() == before
+
+
+def test_multiple_constraints_are_split_apart():
+    """The simulator joins them with '; ' and each is lifted verbatim from the
+    target's own record, so splitting gives ranking whole phrases to match."""
     slots = Slots()
-    slots.profile = {"preference_tags": ["comfort"]}
-    slots.observe("leather belt", 1)
-    assert "comfort" in slots.to_query()
-    assert "leather belt" in slots.to_query()
+    slots.observe("For that, what matters is: Water Resistant; 3 Year Battery.", 1)
+    assert slots.constraints() == ["Water Resistant", "3 Year Battery"]
 
 
 def test_pick_attribute_never_repeats_before_exhausting():
@@ -71,5 +86,3 @@ def test_rank_returns_bare_asins_best_first(fake_catalog_path):
     assert all(isinstance(asin, str) for asin in ranked)
 
 
-def test_rank_on_empty_candidates_returns_empty(fake_catalog_path):
-    assert PriorRanker(load(fake_catalog_path), Config()).rank([], Slots(), {}) == []

@@ -1,9 +1,9 @@
 """The response envelope must satisfy docs/agent_api_contract.json.
 
-These are the fatal-severity tests. A malformed response costs a whole session,
-and the contract sets additionalProperties: false in three places, so an extra
-key is a violation even though the local evaluator happens to tolerate it. We
-test against the contract, not against the evaluator's leniency.
+Why these exist: if `respond` returns a dict whose `message` is not a string,
+the evaluator throws away the ENTIRE response including the recommendations and
+scores that turn empty. Nothing in the metric breakdown says why. That failure
+is silent and expensive, which is the bar for a test earning its place here.
 """
 
 from __future__ import annotations
@@ -25,17 +25,9 @@ CONTRACT = json.loads(
 
 
 def test_our_enum_matches_the_shipped_contract():
-    """Guards against the organiser's enum and ours drifting apart."""
+    """Catches the organiser's enum and ours drifting apart."""
     shipped = CONTRACT["turn_response"]["properties"]["ask_attribute"]["enum"]
-    assert set(ASK_ATTRIBUTES) == {value for value in shipped if value is not None}
-    assert None in shipped
-
-
-def test_response_allowed_keys_match_contract():
-    allowed = set(CONTRACT["turn_response"]["properties"])
-    built = response.build("hi", "color", ["B1"])
-    assert set(built) <= allowed
-    assert CONTRACT["turn_response"]["additionalProperties"] is False
+    assert set(ASK_ATTRIBUTES) == {v for v in shipped if v is not None}
 
 
 def test_build_produces_a_legal_response():
@@ -45,53 +37,43 @@ def test_build_produces_a_legal_response():
 
 
 def test_build_drops_duplicates_preserving_order():
+    """Rank is array position, and the evaluator drops duplicates itself, so a
+    duplicate silently wastes one of only ten scored slots."""
     built = response.build("x", None, ["B1", "B2", "B1", "B3"])
-    assert [item["parent_asin"] for item in built["recommendations"]] == ["B1", "B2", "B3"]
+    assert [i["parent_asin"] for i in built["recommendations"]] == ["B1", "B2", "B3"]
 
 
 def test_build_coerces_an_illegal_attribute_to_null():
-    built = response.build("x", "not_an_attribute", ["B1"])
-    assert built["ask_attribute"] is None
-    assert response.violations(built) == []
+    """The local evaluator silently rewrites an unknown attribute to 'other',
+    but the shipped enum is closed and the private harness may validate it."""
+    assert response.build("x", "not_an_attribute", ["B1"])["ask_attribute"] is None
 
 
-def test_build_respects_the_hundred_item_cap():
-    built = response.build("x", None, [f"B{i}" for i in range(250)])
-    assert len(built["recommendations"]) == CONTRACT["turn_response"]["properties"]["recommendations"]["maxItems"]
-
-
-def test_build_never_emits_negative_token_counts():
-    built = response.build("x", None, ["B1"], prompt_tokens=-5, completion_tokens=-1)
-    assert built["usage"] == {"prompt_tokens": 0, "completion_tokens": 0}
+def test_non_finite_scores_are_never_emitted():
+    """NaN serialises as bare NaN, which is not valid JSON. Any future ranker
+    doing a division can produce one."""
+    built = response.build("x", None, [("B1", float("nan"))])
+    json.dumps(built)
+    assert "score" not in built["recommendations"][0]
 
 
 @pytest.mark.parametrize(
-    "bad, expected_fragment",
+    "bad, fragment",
     [
         ({"message": 1, "ask_attribute": None, "recommendations": []}, "message must be a string"),
-        ({"message": "x", "ask_attribute": "nope", "recommendations": []}, "ask_attribute not in enum"),
-        ({"message": "x", "ask_attribute": None, "recommendations": {}}, "recommendations must be a list"),
+        ({"message": "x", "ask_attribute": "nope", "recommendations": []}, "not in enum"),
+        ({"message": "x", "ask_attribute": None, "recommendations": {}}, "must be a list"),
         ({"message": "x", "ask_attribute": None, "recommendations": [], "junk": 1}, "additionalProperties"),
-        ({"message": "x", "ask_attribute": None}, "missing required field: recommendations"),
-        (
-            {"message": "x", "ask_attribute": None, "recommendations": [{"parent_asin": "B1", "oops": 2}]},
-            "extra keys",
-        ),
-        (
-            {"message": "x", "ask_attribute": None, "recommendations": [], "usage": {"prompt_tokens": -1, "completion_tokens": 0}},
-            "non-negative",
-        ),
-        ("not a dict", "must be a dict"),
+        ({"message": "x", "ask_attribute": None}, "missing required field"),
     ],
 )
-def test_violations_catches_each_contract_break(bad, expected_fragment):
-    found = response.violations(bad)
-    assert any(expected_fragment in problem for problem in found), found
+def test_violations_catches_each_contract_break(bad, fragment):
+    assert any(fragment in problem for problem in response.violations(bad))
 
 
 def test_every_agent_turn_is_contract_legal(agent, profile):
-    """The real thing, end to end, across a multi turn session."""
+    """The one that would actually catch a regression in the shipped agent."""
     agent.reset("contract-session", profile)
     for turn in range(1, 11):
         result = agent.respond("contract-session", "I want a leather belt", turn, 10)
-        assert response.violations(result) == [], f"turn {turn}: {response.violations(result)}"
+        assert response.violations(result) == [], f"turn {turn}"

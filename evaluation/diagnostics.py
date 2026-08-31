@@ -29,6 +29,10 @@ ATTRIBUTE_SOURCES: dict[str, tuple[str, ...]] = {
     "brand": ("Brand", "Brand Name"),
 }
 
+# Default location of the frozen catalog, resolved against the repo root rather
+# than the process CWD so the script works from anywhere.
+DEFAULT_CATALOG = Path(__file__).resolve().parent.parent / "techjam-conversational-search/data/catalog.jsonl"
+
 # Chars per token is a rough 4:1 for English product text. Good enough to size
 # an extraction budget to the nearest order of magnitude, which is all we need.
 CHARS_PER_TOKEN = 4
@@ -118,7 +122,7 @@ def report(products: list[dict[str, Any]]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--catalog", default="techjam-conversational-search/data/catalog.jsonl", type=Path)
+    parser.add_argument("--catalog", default=DEFAULT_CATALOG, type=Path)
     args = parser.parse_args()
     report(list(load_catalog(args.catalog)))
 
