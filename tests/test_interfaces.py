@@ -114,18 +114,34 @@ def test_details_weight_promotes_a_details_only_match(tmp_path):
     assert retriever.retrieve("celestial dragon", 1)[0][0] == "details-match"
 
 
-def test_phrase_evidence_boosts_before_candidate_truncation(fake_catalog_path):
-    retriever = TfidfRetriever(load(fake_catalog_path), Config())
-    plain = retriever.retrieve("moon pendant necklace", 10)
+def test_phrase_evidence_changes_selection_before_candidate_truncation(tmp_path):
+    common = {
+        "features": [],
+        "description": [],
+        "categories": [],
+        "store": "",
+        "details": {},
+        "rating_number": 0,
+        "average_rating": 0.0,
+    }
+    catalog = load(write_catalog(tmp_path, [
+        {**common, "parent_asin": "lexical-neighbour", "title": "moon pendant"},
+        {
+            **common,
+            "parent_asin": "phrase-target",
+            "title": "moon pendant",
+            "features": ["triple constellation phrase"],
+        },
+    ]))
+    retriever = TfidfRetriever(catalog, Config())
+    plain = retriever.retrieve("moon pendant", 1)
     boosted = retriever.retrieve(
-        "moon pendant necklace",
-        10,
-        phrases=("Triple Moon Pentagram Symbol",),
+        "moon pendant",
+        1,
+        phrases=("triple constellation phrase",),
     )
-    plain_scores = dict(plain)
-    boosted_scores = dict(boosted)
-    assert boosted_scores["B000000010"] > plain_scores["B000000010"]
-    assert boosted[0][0] == "B000000010"
+    assert plain[0][0] == "lexical-neighbour"
+    assert boosted[0][0] == "phrase-target"
 
 
 def test_omitted_phrase_evidence_matches_an_empty_sequence(fake_catalog_path):
@@ -179,3 +195,21 @@ def test_rank_returns_bare_asins_best_first(fake_catalog_path):
     ranked = ranker.rank([("B000000001", 1.0), ("B000000003", 0.4)], Slots(), {})
     assert ranked == ["B000000001", "B000000003"]
     assert all(isinstance(asin, str) for asin in ranked)
+
+
+def test_rank_explanation_matches_the_returned_order(fake_catalog_path):
+    catalog = load(fake_catalog_path)
+    ranker = PriorRanker(catalog, Config())
+    candidates = [("B000000001", 1.0), ("B000000003", 0.4)]
+    explanation = ranker.explain(candidates, Slots(), {})
+    assert ranker.rank(candidates, Slots(), {}) == [
+        item["parent_asin"] for item in explanation
+    ]
+    for item in explanation:
+        expected = (
+            item["retrieval"]
+            + item["popularity"]
+            + item["rating"]
+            + item["phrase"]
+        )
+        assert item["total"] == expected

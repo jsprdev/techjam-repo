@@ -165,6 +165,16 @@ class Agent:
         attribute = slots.pick_attribute()
         message = self._phrase(attribute)
 
+        extra = {}
+        if SINK.detailed:
+            extra = {
+                "retrieval_shortlist": [
+                    {"parent_asin": asin, "score": score}
+                    for asin, score in candidates[: self.config.rerank_depth]
+                ],
+                "ranking": self.ranker.explain(candidates, slots, slots.profile),
+            }
+
         SINK.record(
             TurnTrace(
                 session_id=session_id,
@@ -175,6 +185,7 @@ class Agent:
                 candidate_count=len(candidates),
                 top_recommendations=ranked[:TOP_K],
                 elapsed_ms=(time.perf_counter() - started) * 1000.0,
+                extra=extra,
             )
         )
         return response_module.build(

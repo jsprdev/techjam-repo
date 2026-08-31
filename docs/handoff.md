@@ -30,6 +30,21 @@ high and reranking drops it, tune Role 3's popularity and phrase calibration. If
 places it low, preserve the new candidate pool while using a more precision-oriented lexical
 ordering for the shortlist.
 
+## MRR diagnostic checkpoint
+
+`evaluation/rank_diagnostics.py` is now available for a train-only attribution run. It
+enables detailed traces only for that local run and joins those traces to official evaluator
+results. The Agent never receives target information and its normal response path does not
+construct these diagnostic payloads.
+
+With `retrieval_exact_phrase_boost=0.0` on all 160 train sessions, 144 sessions converted.
+The reranker moved the target from mean retrieval position 33.26 to mean final position
+1.97: 118 promotions, three demotions, and 23 unchanged. In rank-one misses, the leading
+candidate's average advantage was +0.2136 from popularity but only +0.0442 from retrieval;
+rating and phrase evidence were neutral. Do not lower the popularity prior globally: the
+earlier sweep showed it improves overall quality. The next scoped test is a small
+constraint-specificity reranker increment for close candidates, evaluated only on train.
+
 ## Where things stand
 
 The pipeline runs end to end through the official command and scores **0.7889** on all 200

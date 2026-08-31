@@ -48,6 +48,27 @@ integration base for dialogue and ranking work, but the MRR regression fails the
 gate below. Do not merge it into `main` until a precision-oriented reranking experiment
 preserves the coverage gain without reducing MRR.
 
+## MRR diagnostic checkpoint
+
+The branch also contains a train-only ranking diagnostic (`evaluation/rank_diagnostics.py`).
+It records the retrieval shortlist and deterministic reranker components only when
+explicitly requested by the offline evaluator; it does not change the public `Agent`
+response or the production scoring path.
+
+On the 160-session training split with retrieval phrase boosting set to zero (the
+strongest comparable configuration tested), the target appeared in a converting top ten
+in 144 sessions. Reranking improved its mean position from 33.26 in the retrieval
+shortlist to 1.97, promoting it in 118 sessions and demoting it in only three. Where the
+target still finished below first, the leading candidate's mean advantage was dominated by
+the popularity prior (+0.2136); retrieval contributed only +0.0442 and rating and phrase
+components were effectively neutral.
+
+Therefore the next experiment is deliberately narrow: add a small, deterministic
+constraint-specificity signal to the reranker, then measure it on the train split. Do not
+globally reduce popularity, add a second catalog-wide index, or inspect the holdout before
+the feature is frozen. The latter would raise the current approximately 937 MB peak memory
+without an announced memory limit.
+
 ## Score ownership
 
 | Role | Owns | Weight |
