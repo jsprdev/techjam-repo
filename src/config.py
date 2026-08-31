@@ -193,6 +193,9 @@ class Config:
     # must be opt in and must degrade to the deterministic ordering.
     use_llm: bool = False
     llm_timeout_seconds: float = 8.0
+    # Model for the live reranker. Swept nowhere yet: the stage is off by
+    # default, so this only matters to someone running with a key.
+    llm_model: str = "claude-opus-5"
 
     # Re-raise instead of falling back to the popularity list when a turn
     # fails. Production keeps this False, because a crash costs a whole session

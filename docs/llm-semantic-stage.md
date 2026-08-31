@@ -15,7 +15,31 @@ path is then a way to score zero, not a way to score higher.
 
 Both are real requirements and they conflict only if the call happens per turn.
 
-## The resolution
+## Two stages, not one
+
+The brief's phrase "LLM Semantic Ranking" describes a model that READS THE
+CONVERSATION and reorders the shortlist for this customer. There are now two
+stages, and they answer different halves of the problem.
+
+| | Offline prior | Live rerank |
+| --- | --- | --- |
+| File | `offline/build_semantic_prior.py` | `src/language/rerank.py` |
+| Runs | Once, before submission | Every turn |
+| Sees | One product, alone | The conversation plus the shortlist |
+| Reacts to what the customer said | No | **Yes** |
+| Needs network at run time | No | Yes |
+| Default | **On** | **Off** |
+
+The live rerank is what spec 6.5 actually specified. It is off by default, and
+that is not a hedge: `docs/submission_rules.md` warns official scoring may run
+with network access disabled, so a model on the turn path is a way to score
+zero. The spec anticipated exactly this and said the deterministic ordering
+ships instead when the reranker is unavailable.
+
+Enable it with `Config.use_llm = True` and an `ANTHROPIC_API_KEY`. With it off,
+the reported token usage is 0 and the score is unchanged.
+
+## The resolution for the graded run
 
 Move the model off the turn path. It runs once, offline, before submission.
 
@@ -79,6 +103,28 @@ covering **60 of 50,000 products**, 0.12% of the catalog, reaching 37 of the 200
 signal is directionally positive at that coverage. Whether it scales is untested, and the
 enriched products are the most reviewed ones, which the popularity prior already ranks well,
 so the marginal value of enriching the tail may differ in either direction.
+
+## The live rerank, and what is tested
+
+`src/language/rerank.py` sends the customer's disclosed constraints and up to 20
+candidates, and asks for a reordering. The layer boundary from spec section 4
+holds: it proposes an ordering, it does not set the belief and it does not
+decide whether to commit, so a confident model cannot override a confident
+belief, only reorder what the belief surfaced.
+
+Nothing about it is load-bearing. Every failure path returns the input order
+unchanged: no key, no network, timeout, malformed JSON, a reply that is not a
+list, a safety refusal, or a model that drops, duplicates or invents indices.
+`tests/test_rerank.py` covers each of those by injecting a fake client, so the
+tests need neither a key nor a network.
+
+**What is NOT tested: a single real API call.** No key was available here. The
+request shape follows the current SDK documentation and the failure handling is
+covered, but nobody has yet watched it succeed against the live API. Anyone
+enabling it should run one session with a key before trusting it, and one of the
+failure tests already caught a real bug: a non-list `order` silently rebuilt the
+input order while still reporting that the model had run, which would have
+overstated the stage in the usage disclosure.
 
 ## Honest limitations
 
