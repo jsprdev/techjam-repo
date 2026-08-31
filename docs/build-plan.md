@@ -17,6 +17,37 @@ somebody would otherwise have done.
 3. **Asking is free.** The evaluator checks `recommendations` for a hit before it reads
    `ask_attribute`, so one turn carries both. There is no ask-versus-recommend tradeoff.
 
+## Current implementation checkpoint: field-aware retrieval
+
+The initial retrieval implementation is committed on branch
+`codex/field-aware-retrieval` at `517ef30` and is ready to push as a collaboration
+checkpoint. It is not ready to merge into `main` as the final retrieval setting.
+
+Completed work:
+
+- Separate in-memory TF-IDF indexes for title, features, categories, description, store,
+  and details, blended with the weights in `Config`.
+- Optional disclosed phrase evidence passed through the retriever interface and applied as
+  a soft, whole-phrase score before candidate truncation.
+- Separate retrieval and reranker phrase-boost settings, sweep-cache updates, and focused
+  field, phrase, and agent integration tests.
+- `pytest` passes with 51 tests. Offline verification and the query-degeneracy check pass.
+
+Full public-set measurement for the branch's configured default:
+
+| Metric | Previous pooled retrieval | Field-aware branch |
+| --- | ---: | ---: |
+| TechnicalScore | 0.7889 | **0.8487** |
+| HitRate@10 | 0.8600 | **0.9650** |
+| MRR | **0.7367** | 0.6416 |
+| MTTC | 4.11 | **2.31** |
+
+This raises coverage and reaches a converting top ten much earlier, but it lowers MRR by
+placing the target farther down the first successful list. The branch is useful as an
+integration base for dialogue and ranking work, but the MRR regression fails the promotion
+gate below. Do not merge it into `main` until a precision-oriented reranking experiment
+preserves the coverage gain without reducing MRR.
+
 ## Score ownership
 
 | Role | Owns | Weight |
@@ -33,6 +64,11 @@ title, features, description, categories and store, with heavy boosting for exac
 hits, because the simulated customer speaks in phrases copied verbatim out of the target
 product's own record. Also owns the query builder and the truncation width that narrows on
 Buying and widens on Browsing.
+
+The field-aware index and retrieval-stage phrase evidence are now implemented on
+`codex/field-aware-retrieval`. The remaining retrieval task is precision calibration: keep
+the candidate coverage gain while handing Role 3 a shortlist whose strongest lexical and
+phrase matches rank first.
 
 - Day 1: ship a working retriever before tuning anything, so roles 2 and 3 are unblocked.
 - Done when: recall@10 above 75% and recall@1 above 55% with full constraints, on the

@@ -3,6 +3,33 @@
 Written overnight after day 1. Read your own section, then `phase0-findings.md` for the
 evidence behind any claim you want to challenge.
 
+## Current branch update: field-aware retrieval
+
+This update supersedes the statements below that describe retrieval as untouched or its
+field weights as unused. The original handoff remains as the day 1 baseline.
+
+Branch `codex/field-aware-retrieval`, commit `517ef30`, now has:
+
+- Separate TF-IDF indexes for title, features, categories, description, store, and details.
+- Runtime field weighting plus `weight_details` in `Config`.
+- Optional phrase evidence passed from `Slots` to retrieval, with a soft exact-phrase boost
+  before candidate truncation.
+- A backward-compatible retriever seam, sweep-cache support, and focused regression tests.
+
+Validation passed: 51 tests, offline verification, and the query-degeneracy check.
+
+The branch's full public-set result is **0.8487 TechnicalScore**, with 0.9650 HitRate@10,
+0.6416 MRR, and 2.31 MTTC. The previous pooled-retrieval result was 0.7889, 0.8600,
+0.7367, and 4.11 respectively.
+
+Interpret this correctly: candidate coverage and conversion speed improved substantially,
+but MRR regressed. The branch should be pushed to unblock downstream work, but it should
+not merge into `main` as the final retrieval configuration. The next diagnostic should trace
+the target's retrieval position against its final position. If retrieval already places it
+high and reranking drops it, tune Role 3's popularity and phrase calibration. If retrieval
+places it low, preserve the new candidate pool while using a more precision-oriented lexical
+ordering for the shortlist.
+
 ## Where things stand
 
 The pipeline runs end to end through the official command and scores **0.7889** on all 200
@@ -36,10 +63,10 @@ mostly noise. Do not spend a day there.
 worth 0.20 of the score. Getting MTTC to 2.5 would add roughly 0.032, and it is the one
 number no lever has moved much yet. That is role 2, and it is now the best-value work left.
 
-**Retrieval itself is still untouched.** `weight_title` and the other four field weights have
-zero readers: every field is still pooled into one bag of words, so a word in a care
-instruction counts as much as one in the title. That is role 1, and it is the largest
-completely unexplored area.
+**Retrieval is now implemented but not promoted.** The field-aware branch uses title,
+feature, category, description, store, and details scores separately, then boosts disclosed
+whole phrases before truncation. It produced a stronger overall score but a lower MRR, so
+ranking precision is now the blocking issue rather than candidate coverage.
 
 ## One thing to know before you write a test
 
@@ -75,12 +102,14 @@ Found by auditing the kit. Violating any of these is expensive and silent.
 
 ## Role 1: Retrieval
 
-`src/retrieval/baseline.py`. You own **HitRate@10, weight 0.50**. Currently 0.66.
+`src/retrieval/baseline.py`. You own **HitRate@10, weight 0.50**. The field-aware checkpoint
+is on `codex/field-aware-retrieval`; the work below describes the original v0 starting point.
 
 The ceiling is 67% at depth 10 and 100% at depth 1000, so the candidates are already there.
 Your job is ordering them better, not finding more.
 
-Two levers are already wired into `Config` and completely unused by the v0 module:
+The v0 module left two levers unused. The field-aware branch now implements both as a
+separate per-field index and retrieval-stage phrase evidence:
 
 - `weight_title`, `weight_features`, `weight_categories`, `weight_description`,
   `weight_store`. Right now every field is pooled into one bag of words, so a word in a care
