@@ -2,15 +2,22 @@
 # CPU, memory and network restrictions, so nothing here downloads anything at
 # import or at run time.
 #
-# Pinned rather than floored, because the score has to be reproducible on the
-# judge's machine and not just on ours. A floating `numpy>=1.26` once produced
-# 0.893583 on numpy 2.4.6 and 0.892323 on 2.5.2 from the same commit, through
-# tie-breaking inside `np.argpartition`. That specific cause is fixed in
-# `src/retrieval/baseline.py::_top_k`, which now breaks ties by catalog index,
-# so these pins are a second line of defence rather than the fix itself. They
-# are the versions every number in the README and docs was measured on.
-numpy==2.4.6
+# Pinned rather than floored so a published number is reproducible, which the
+# rules require. These are the versions every score in the README and docs was
+# measured on.
+#
+# The pin is a second line of defence, not the fix. The same commit once scored
+# 0.893583 on numpy 2.4.6 and 0.892323 on 2.5.2, and the cause was ours: the
+# candidate pool was selected with `np.argpartition`, whose order among equal
+# scores is an implementation detail free to change between releases. TF-IDF
+# leaves most of the catalog at exactly 0.0, so a wide shortlist is mostly
+# drawn from tied items. `src/retrieval/baseline.py::_top_k` now breaks ties by
+# catalog index instead, which the frozen catalog fixes, so the score is a
+# property of the code rather than of the installed numpy. scikit-learn was
+# identical on both machines, so it was never the cause.
+numpy==2.5.2
 scikit-learn==1.9.0
 
-# Development only. Not needed to run the agent in the official harness.
+# Development only. Not needed to run the agent in the official harness, and it
+# cannot affect the score, so this one stays a floor rather than a pin.
 pytest>=8.0
