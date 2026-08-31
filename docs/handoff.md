@@ -8,12 +8,13 @@ next evidence-backed work; `phase0-findings.md` contains the original measuremen
 `codex/field-aware-retrieval` is ready to push as a collaboration checkpoint.
 Its relevant commits are:
 
-- `517ef30` — field-aware lexical retrieval
-- `79f5ad0` — train-only MRR diagnostics
-- `f42b9c4` — rejected specificity-experiment record
+- `517ef30`: field-aware lexical retrieval
+- `79f5ad0`: train-only MRR diagnostics
+- `f42b9c4`: rejected specificity-experiment record
+- `5720dd8`: merged ask-policy and rerank-depth improvements from `main`
 
 The default system is deterministic, in-memory, read-only against the catalog, and has no
-network dependency on its critical path. It passes 52 tests and
+network dependency on its critical path. It passes 54 tests and
 `evaluation/verify_offline.py`. Run `evaluation/check_degeneracy.py` after changing how
 ranking composes.
 
@@ -27,12 +28,12 @@ evidence before candidate truncation. The public interface remains backward comp
 
 The full public-set result for the configured default is:
 
-| Metric | Pooled baseline | Field-aware branch |
+| Metric | Pooled baseline | Merged retrieval branch |
 | --- | ---: | ---: |
-| TechnicalScore | 0.7889 | **0.8487** |
+| TechnicalScore | 0.7889 | **0.849765** |
 | HitRate@10 | 0.8600 | **0.9650** |
-| MRR | **0.7367** | 0.6416 |
-| MTTC | 4.11 | **2.31** |
+| MRR | **0.7367** | 0.630883 |
+| MTTC | 4.11 | **2.10** |
 
 This is a strong retrieval and efficiency checkpoint, but it is not ready to replace
 `main` as the final configuration because its MRR is lower. Its measured peak memory is
@@ -61,7 +62,7 @@ confirm a promising variant; do not inspect the 40-session holdout before featur
 
 1. Preserve the public `Agent` API and the `Retriever.retrieve(query, k, phrases=())` seam.
 2. Do not edit `techjam-conversational-search/evaluator/` or mutate the catalog.
-3. Keep all retrieval and ranking evidence soft—never hard-filter candidates.
+3. Keep all retrieval and ranking evidence soft, never hard-filter candidates.
 4. `reset()` and `respond()` must never raise; only valid, unique ASINs may be recommended.
 5. Ranking is recommendation-array order. The evaluator does not read a score field.
 6. Keep the critical path offline and deterministic. Do not add a model download, vector
@@ -89,8 +90,8 @@ offline constraints, and a second full-catalog index is risky at the current mem
 
 ## Role 2: Dialogue
 
-Owns `src/state/slots.py` and **Efficiency / MTTC (weight 0.20)**. The field-aware checkpoint
-already reaches 2.31 overall MTTC, but the following evaluator behaviour remains important
+Owns `src/state/slots.py` and **Efficiency / MTTC (weight 0.20)**. The merged checkpoint
+already reaches 2.10 overall MTTC, but the following evaluator behaviour remains important
 for any dialogue work:
 
 1. `customer_reply` supplies up to two undisclosed constraints whose
@@ -121,10 +122,11 @@ do not remove it globally. Its earlier pre-field-aware sweep plateaued around we
 that even a strong popularity prior reorders a query-dependent shortlist rather than
 replacing relevance.
 
-Historical rerank-depth sweeps also showed a trade-off: deeper reranking can improve
-HitRate@10 and MTTC while lowering within-list MRR. Keep `rerank_depth=100` unless a new
-train-only measurement beats the current checkpoint acceptance gate; deeper values affect
-Browsing more than Buying because truncation is 800 versus 200 candidates.
+The rerank-depth sweep was repeated after phrase evidence was added. `rerank_depth=200` is
+now the default because it reaches targets that sat just beyond the former depth of 100.
+It improves coverage and MTTC, but the measured lower MRR means any further depth increase
+must clear the checkpoint acceptance gate. Depth above 200 affects Browsing more than Buying
+because truncation is 800 versus 200 candidates.
 
 The next Role 3 task is diagnostic-led: compare field-level constraint matches between the
 target and the popular rank-one leader, then trial a small soft tie-breaker only if the

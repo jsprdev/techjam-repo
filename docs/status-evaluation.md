@@ -1,7 +1,9 @@
 # Status evaluation: every requirement, against what exists
 
-Written after the score plateaued at 0.8951 on the train split. Audits the code against the
-organiser's brief (`problem-statement.md`), our own build spec
+Originally written after the main-only score plateaued at 0.8951 on the train split. The
+public metrics below now reflect the merged field-aware retrieval branch; its feature-status
+audit should be refreshed before using it as a current implementation inventory. It audits
+the code against the organiser's brief (`problem-statement.md`), our own build spec
 (`techjam-detailed-agent-spec.md`), and the four-role plan (`docs/build-plan.md`).
 
 Verified by reading the code, not the docstrings. A config field nothing reads is MISSING.
@@ -12,11 +14,12 @@ Verified by reading the code, not the docstrings. A config field nothing reads i
 
 | | |
 | --- | --- |
-| TechnicalScore | **0.8951** train, **0.8522** last full official run, baseline 0.1067 |
-| HitRate@10 | 0.975 train |
-| MRR | 0.790 train |
-| MTTC | 2.48 train |
-| Parameter tuning | **Exhausted.** A 9-cell sweep spans 0.017 and `exact_phrase_boost` at 2, 4 and 8 differ by 0.0005 |
+| TechnicalScore | **0.849765** on 200 public sessions, baseline 0.1067 |
+| HitRate@10 | 0.965 |
+| MRR | 0.630883 |
+| MTTC | 2.10 |
+| Efficiency | 0.890 |
+| Parameter tuning | The main-only sweep is historical and must be revalidated for field-aware retrieval |
 | Pillars fully answered | **1 of 4** |
 
 The number and the pillars have come apart. Almost everything remaining closes a named
@@ -34,7 +37,7 @@ score is one input to Technical Execution, which is 35% of judging.
 | Pipeline base: **category** retrieval | **MISSING** | No category route exists |
 | Pipeline base: **vector** similarity | **MISSING** | No dense route exists |
 | Pipeline base: **LLM Semantic Ranking** | **MISSING** | `src/language/` does not exist. Zero LLM calls anywhere |
-| In-memory execution | BUILT | No external store, 875 MB peak |
+| In-memory execution | BUILT | No external store, about 937 MB peak |
 
 The brief names the pipeline base literally as "Multi-Route Retrieval then LLM Semantic
 Ranking". We have one of three routes and none of the ranking stage. **This is the single
@@ -50,10 +53,10 @@ for it by name.
 | Over-Generality retrieval cutoff | **MISSING** | `flat_belief_entropy` has zero readers |
 | Proactive structured clarification prompts | **PARTIAL** | Attribute choice is real and measured; the wording in `agent.py:_phrase` is a placeholder |
 
-Measured before proposing work: `intent_override` is already our **best** bucket at hit
-0.900, MRR 0.900, MTTC 4.67, against a structural floor of turn 3 or 4. Perfect override
-handling is worth at most **+0.012** TechnicalScore. It closes a named requirement; it does
-not meaningfully move the number. Both facts should be stated plainly in the writeup.
+On the merged branch, `intent_override` remains the strongest MRR bucket at hit 0.966667,
+MRR 0.840000, and MTTC 3.8333, against a structural floor of turn 3 or 4. Override handling
+still closes a named requirement, but its score impact should be re-measured before making a
+claim in the writeup.
 
 ## 4. Pillar III, Self-Evolution
 
@@ -99,7 +102,7 @@ beyond what the brief asks for and are worth saying so.
 | In-scope item | Status |
 | --- | --- |
 | Intent-detection modules splitting Buying and Browsing | **MISSING**, only a constraint-count proxy |
-| Heterogeneous retrieval routing: weights | **MISSING**, all five `weight_*` fields have zero readers |
+| Heterogeneous retrieval routing: weights | BUILT, per-field TF-IDF matrices are blended at runtime |
 | Heterogeneous retrieval routing: custom dynamic truncation | BUILT, and swept |
 | Heterogeneous retrieval routing: **slot decay over time** | **MISSING**, `slot_decay` has zero readers |
 | Runtime-adaptive memory for context distillation | BUILT but unnamed, see Pillar III |
@@ -135,11 +138,11 @@ All clean.
 
 ## 9. Dead config: documented intentions, not features
 
-Nine fields have no reader anywhere in `src/`, `evaluation/` or `tests/`:
+The following configuration fields have no current reader in `src/`, `evaluation/`, or
+`tests`:
 
 ```
-flat_belief_entropy   slot_decay        use_llm       llm_timeout_seconds
-weight_title  weight_features  weight_categories  weight_description  weight_store
+flat_belief_entropy   slot_decay   use_llm   llm_timeout_seconds
 ```
 
 Each corresponds to a named brief requirement. They are the gap list in miniature.

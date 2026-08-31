@@ -30,22 +30,20 @@ Completed work:
   a soft, whole-phrase score before candidate truncation.
 - Separate retrieval and reranker phrase-boost settings, sweep-cache updates, and focused
   field, phrase, and agent integration tests.
-- 52 tests, offline verification, and the query-degeneracy check pass.
+- 54 tests, offline verification, and the query-degeneracy check pass.
 
 Full public-set measurement for the branch's configured default:
 
-| Metric | Previous pooled retrieval | Field-aware branch |
+| Metric | Previous pooled retrieval | Merged retrieval branch |
 | --- | ---: | ---: |
-| TechnicalScore | 0.7889 | **0.8487** |
+| TechnicalScore | 0.7889 | **0.849765** |
 | HitRate@10 | 0.8600 | **0.9650** |
-| MRR | **0.7367** | 0.6416 |
-| MTTC | 4.11 | **2.31** |
+| MRR | **0.7367** | 0.630883 |
+| MTTC | 4.11 | **2.10** |
 
 This raises coverage and reaches a converting top ten much earlier, but it lowers MRR by
-placing the target farther down the first successful list. The branch is useful as an
-integration base for dialogue and ranking work, but the MRR regression fails the promotion
-gate below. Do not merge it into `main` until a precision-oriented reranking experiment
-preserves the coverage gain without reducing MRR.
+placing the target farther down the first successful list. The merged ask policy and
+`rerank_depth=200` improve MTTC further, but MRR remains the active precision problem.
 
 ## MRR diagnostic checkpoint
 
@@ -62,8 +60,8 @@ target still finished below first, the leading candidate's mean advantage was do
 the popularity prior (+0.2136); retrieval contributed only +0.0442 and rating and phrase
 components were effectively neutral.
 
-The first deliberately narrow experiment—a small, deterministic score for longer exact
-constraints—was swept from 0 through 4 on an initial 40 training sessions. It did not
+The first deliberately narrow experiment, a small deterministic score for longer exact
+constraints, was swept from 0 through 4 on an initial 40 training sessions. It did not
 change any rank or metric, so it was rejected and not retained in the scoring path. Do not
 globally reduce popularity, add a second catalog-wide index, or inspect the holdout before
 a promising feature is found. The latter would raise the current approximately 937 MB peak
@@ -95,7 +93,7 @@ shortlist whose strongest lexical and phrase matches rank first.
 ## Role 2: Dialogue
 
 Owns `src/state/`. Slots accumulate, get overridden and decay; the agent routes Buying versus
-Browsing per turn. The current branch already reaches 2.31 overall MTTC, so dialogue is not
+Browsing per turn. The current branch already reaches 2.10 overall MTTC, so dialogue is not
 the immediate blocker. Preserve the ten-turn cap and do not trade away the retrieval gain.
 
 Know this before designing the policy:
