@@ -7,7 +7,9 @@ A multi-turn shopping agent that finds a hidden target product in a frozen 50,00
 Amazon catalog by talking to a simulated customer, in at most ten turns.
 
 **Current score: 0.893583 TechnicalScore** on all 200 public sessions, measured through the
-official harness, against a 0.107 BM25 baseline. Runs fully offline with no LLM dependency.
+official harness, against a 0.107 BM25 baseline. Runs fully offline: the LLM ranking judgment
+is computed ahead of time and read from a committed artefact, so the scored run makes no
+network call and reports zero tokens.
 
 | Metric | Value | Weight | Baseline |
 | --- | --- | --- | --- |
@@ -20,7 +22,7 @@ official harness, against a 0.107 BM25 baseline. Runs fully offline with no LLM 
 | scenario | n | hit@10 | mrr | mttc |
 | --- | --- | --- | --- | --- |
 | buying | 80 | 0.975 | 0.828 | 1.98 |
-| browsing | 80 | 0.975 | 0.671 | 2.08 |
+| browsing | 80 | 0.975 | 0.675 | 2.08 |
 | intent_override | 30 | 0.967 | 0.917 | 4.03 |
 | boundary | 10 | 1.000 | 0.817 | 3.30 |
 

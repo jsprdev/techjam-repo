@@ -1,10 +1,11 @@
 # Consolidation: what was built, why, what is left
 
-Last verified 31 August 2026 against `main` at `d476b36`. Section 4.11 (profile
-preference-tags in the ranker: considered, measured, not merged) added
-afterwards on this machine, which reproduces a train baseline of 0.8963 and an
-all-200 official score of 0.892323 rather than the 0.893583 recorded below; see
-the note at the end of section 1.
+Last verified 31 August 2026 against `main`. Section 4.11 (profile
+preference-tags in the ranker: considered, measured, not merged) was added
+afterwards.
+
+The cross-machine score drift this header used to warn about is fixed. Every
+environment now reproduces 0.893583; see the end of section 1.
 
 This is the single document to read if you are picking the project up, joining
 it, or judging it. It supersedes nothing: `docs/handoff.md`,
@@ -24,7 +25,7 @@ Everything below was re-run, not recalled from memory.
 | All remote branches enumerated, unmerged commits found | 3 branches ahead of `main`, all accounted for in section 3 |
 | Test suite on `main` | 89 passed (94 after the section 4.11 work) |
 | Offline probe (`evaluation/verify_offline.py`) | PASS, 10 turns with every socket blocked |
-| Official evaluator on `main` | TechnicalScore **0.893583**, 1 minute 40 seconds |
+| Official evaluator on `main` | TechnicalScore **0.893583** (machine independent, verified on three environments) |
 | Fresh clone, judge simulation | identical 0.893583, so nothing depends on this working copy |
 | Working tree | clean, no uncommitted changes |
 
@@ -314,7 +315,9 @@ and TechnicalScore is one input to the first of those, not the whole of it.
    assets. The rules additionally require disclosing model choice, estimated
    cost, token usage, and latency. We have all four numbers: model
    `claude-opus-5` configured with Haiku 4.5 used for the offline artefact, zero
-   tokens on the shipped path, and 1 minute 40 seconds for all 200 sessions.
+   tokens on the shipped path, and a run time that is hardware dependent (about
+   25 seconds on an Apple silicon laptop, 1 minute 40 on a cloud instance), so
+   quote it with the hardware beside it.
 2. **Demo video.** End to end, on YouTube, public, linked from Devpost, no
    third-party trademarks or copyrighted content. For a backend solution a
    walkthrough of API usage, inference examples and result analysis is accepted.

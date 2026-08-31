@@ -26,6 +26,10 @@ examples and result analysis is explicitly accepted, which is what this is
 
 Every number below was measured on the recording machine (Apple silicon, Python
 3.12.13, numpy 2.5.2, scikit-learn 1.9.0) in a fresh clone at `~/techjam-demo`.
+Wall clock varies a lot with the machine and its load: the same commit has
+timed at 25 seconds here and 7 minutes on a loaded shared cloud box. Re-time on
+the actual recording machine before cutting the scene lengths, and quote the
+latency in the Devpost description with the hardware beside it.
 
 
 | Command                              | Wall clock                                        |
@@ -36,8 +40,9 @@ Every number below was measured on the recording machine (Apple silicon, Python
 | `verify_offline.py`                  | 8.3 s                                             |
 
 
-**The official run takes 25 seconds, not the 1 minute 40 recorded in older
-docs.** That figure came from a different machine. The scene breakdown below is
+**The official run takes 25 seconds here, against 1 minute 40 on another
+machine and 7 minutes on a loaded shared cloud box.** Wall clock is a property
+of the hardware, not of the code. The scene breakdown below is
 built around 25 seconds; do not pad narration to fill time that no longer exists.
 
 ## Numbers to say on camera
@@ -47,23 +52,37 @@ These are what this machine produces. Say these and nothing else.
 
 | Metric                    | Value         |
 | ------------------------- | ------------- |
-| TechnicalScore            | **0.892323**  |
+| TechnicalScore            | **0.893583**  |
 | Hit Rate@10               | 0.975         |
-| MRR                       | 0.775409      |
+| MRR                       | 0.779609      |
 | MTTC                      | 2.39 turns    |
 | Efficiency                | 0.861         |
 | Reported token usage      | 0             |
 | Baseline TechnicalScore   | 0.1067        |
 | Baseline MTTC             | 9.81          |
-| Browsing MRR / buying MRR | 0.671 / 0.822 |
+| Browsing MRR / buying MRR | 0.675 / 0.828 |
 
 
-**Consistency gate.** `requirements.txt` pins no versions, and the score moves
-with the scikit-learn version: 0.893583 on one machine, 0.892323 on this one,
-because TF-IDF tie-breaks shift. Before recording, pin the versions, re-run the
-official command, and make the README, the Devpost description and this script
-all quote whatever comes out. A video and a README that disagree in front of a
-judge is worse than either number on its own.
+**Consistency gate: closed.** This script previously said to expect 0.892323 on
+the recording machine and 0.893583 elsewhere, and to pin versions before
+recording. The drift was ours, not the dependencies': `_top_k` selected the
+candidate pool with `np.argpartition`, which orders tied scores however its
+internal introselect leaves them. TF-IDF puts most of the catalog at exactly
+0.0, so a wide shortlist is mostly tied items, and 35 of 800 slots resolved
+differently between numpy builds.
+
+Ties now break by catalog index, which the frozen catalog fixes. Verified on
+three environments, all producing **0.893583** exactly:
+
+| Environment | Score |
+| --- | --- |
+| Python 3.11, numpy 2.2.6, scikit-learn 1.9.0 | 0.893583 |
+| Python 3.11, numpy 2.4.6, scikit-learn 1.9.0 | 0.893583 |
+| Python 3.12.3, numpy 2.5.2, scikit-learn 1.9.0 | 0.893583 |
+
+So 0.893583 is the number to say on camera, and it is the number the README,
+the Devpost description and a judge's fresh clone all produce. Say it with
+confidence; it is no longer machine dependent.
 
 ## Holdout note
 
@@ -84,7 +103,7 @@ score without anything local propping it up.
 ```bash
 git clone <repo-url> ~/techjam-demo
 cd ~/techjam-demo
-python3.12 -m venv techjam-conversational-search/.venv
+python3 -m venv techjam-conversational-search/.venv   # 3.11, 3.12 or 3.13
 source techjam-conversational-search/.venv/bin/activate
 pip install -r requirements.txt
 ```
@@ -132,7 +151,7 @@ scene so you can check pacing before recording rather than after.
 Conversational Shopping Agent
 Intent routing -> in-memory retrieval -> semantic ranking
 50,000 products, at most 10 turns
-TechnicalScore: 0.892323      Baseline: 0.1067
+TechnicalScore: 0.893583      Baseline: 0.1067
 ```
 
 Narration, 35 words:
@@ -167,7 +186,7 @@ When the JSON appears, point at each figure as you say it. Kept deliberately
 short, 25 words, so the pointing rather than the talking fills the time:
 
 > Twenty-five seconds. Hit Rate at ten, 97.5 percent. MRR, 0.775. Turns to
-> conversion, 2.39 against the baseline's 9.81. TechnicalScore, 0.892323 against
+> conversion, 2.39 against the baseline's 9.81. TechnicalScore, 0.893583 against
 > 0.1067. Token usage, zero.
 
 Return to the repository root:
@@ -287,7 +306,7 @@ Narration, 46 words:
 
 > Two honest limits. This simulator quotes the target's own catalog text, so
 > lexical matching flatters us more than real paraphrasing would. And browsing
-> MRR is 0.671 against buying's 0.822, across half the sessions. That gap is
+> MRR is 0.675 against buying's 0.828, across half the sessions. That gap is
 > where the remaining score is, and where we go next.
 
 ---

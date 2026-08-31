@@ -32,10 +32,18 @@ reranker can read the conversation and reorder the top 20 candidates, but it is
 optional and fails safely to deterministic ranking. This keeps the official
 path reliable when network access is unavailable.
 
-The offline semantic sample was produced with Claude Haiku 4.5. The optional
-live stage is configured for `claude-opus-5`. The shipped path makes no runtime
-model calls, reports zero tokens, and costs $0.00 per evaluation. A full
-200-session run takes approximately 1 minute 40 seconds.
+The offline semantic sample was produced with Claude Haiku 4.5 through the
+Batches API, and its output is committed as `artifacts/semantic_prior.json` so
+the ranker reads an LLM judgment at runtime without making a call. The optional
+live conversational reranker is configured for `claude-opus-5` and is off by
+default. The shipped path makes no runtime model calls, reports zero tokens,
+and costs $0.00 per evaluation.
+
+Latency depends on the hardware: a full 200-session run takes about 25 seconds
+on an Apple silicon laptop and 1 minute 40 seconds on a mid-range cloud
+instance. The score itself does not depend on the machine, which we verified
+across three Python and numpy combinations after fixing a tie-break in the
+retriever that had made it drift.
 
 ## Challenges we ran into
 
