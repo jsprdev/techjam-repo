@@ -275,8 +275,13 @@ the train split because the superseded preference is still true of the target in
 sessions.
 
 **There is no LLM in the pipeline, and the brief names one.** Pillar I quotes the pipeline
-base as "Multi-Route Retrieval then LLM Semantic Ranking". We ship the multi-route retrieval
-and a deterministic reranker, and no model call anywhere. The reason is in the submission
+base as "Multi-Route Retrieval then LLM Semantic Ranking". We ship a single keyword route and
+a deterministic reranker, and no model call anywhere. The second retrieval route was built and
+measured rather than skipped: `docs/retrieval-merge-finding.md` records a field-aware route
+swept continuously against the pooled index and fused with it, and every configuration scored
+at or below the pooled index alone, costing about 0.046 at the best fused operating point. The
+code is kept with its weights defaulted to zero so the measurement can be reproduced. The
+absence of the LLM stage is a separate decision, and the reason is in the submission
 rules: official scoring may run with network access disabled under CPU, memory and timeout
 limits, so a model on the critical path is a way to score zero rather than a way to score
 higher. The reranker's job here, separating the target from 200 lexically similar candidates
