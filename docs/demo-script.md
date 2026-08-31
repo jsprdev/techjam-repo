@@ -237,13 +237,13 @@ route=buying width=200 overloaded=False asks=material target_rank=1
 Narration, 100 words:
 
 > One real session. The customer opens vague: women's dresses, still exploring.
-> The router reads that as browsing, opens an eight-hundred product route for
-> coverage, and finds the candidate pool overloaded. So instead of guessing, it
-> asks which features matter.
+> The router reads that as browsing and the belief comes back flat, so the
+> candidate pool is overloaded. Instead of guessing, the agent asks which
+> features matter.
 >
-> The answer, imported and wrap closure, flips the router to buying. The route
-> narrows to two hundred for precision, the overload clears, and the target moves
-> from outside the top ten to rank one.
+> The answer, imported and wrap closure, flips the router to buying, the
+> overload clears, and the target moves from outside the top ten to rank one.
+> One question, and the answer goes from nowhere to first.
 >
 > Nothing is hard filtered. Constraints demote candidates rather than deleting
 > them, so when a shopper contradicts themselves the agent recovers instead of
@@ -251,6 +251,15 @@ Narration, 100 words:
 
 Ground truth is joined only for this offline explanation. Say that if there is
 room; drop it if the scene is running long.
+
+**Do not claim the wider route is what found it.** The narration above used to
+say the browsing track "opens an eight-hundred product route for coverage",
+which invites the obvious follow-up question, and the honest answer is that the
+width changes nothing: both tracks rerank to depth 200, so the extra 600
+candidates are discarded unread. We measured it, we could not make widening pay,
+and it is disclosed in the README. The persuasive part of this scene is the
+overload detection and the question that follows it, both of which are real.
+Attribute the win there.
 
 ### Scene 4, a measured design choice, 1:32 to 2:02
 
@@ -306,8 +315,12 @@ Narration, 46 words:
 
 > Two honest limits. This simulator quotes the target's own catalog text, so
 > lexical matching flatters us more than real paraphrasing would. And browsing
-> MRR is 0.675 against buying's 0.828, across half the sessions. That gap is
-> where the remaining score is, and where we go next.
+> MRR is 0.675 against buying's 0.828, across half the sessions.
+>
+> We know exactly why. When the target does not come first, it is equal or
+> better on phrase evidence and on retrieval similarity, and it loses on
+> popularity alone. The phrase signal has run out of resolution. Breaking that
+> tie needs a model reading the conversation, and that is where we go next.
 
 ---
 
