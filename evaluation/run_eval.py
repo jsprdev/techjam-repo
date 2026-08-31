@@ -62,6 +62,31 @@ def latency_summary(rows: list[dict[str, Any]]) -> dict[str, float]:
     }
 
 
+def attach_outcomes(
+    traced: dict[str, list[dict[str, Any]]],
+    outcomes: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Join each session's turns to its scored outcome.
+
+    The agent is handed a fresh random `session_id` and never learns which
+    `sample_id` it is serving, so a trace on its own cannot answer "why did this
+    session fail", which is the only question traces exist for. The two lists are
+    joined by position: the evaluator walks its samples in order and the sink
+    records turns in the order they happen, so the nth trace group belongs to the
+    nth outcome. The assertion below is what keeps that from silently drifting.
+    """
+    groups = list(traced.values())
+    if len(groups) != len(outcomes):
+        raise AssertionError(
+            f"cannot join traces to outcomes: {len(groups)} traced sessions "
+            f"against {len(outcomes)} scored sessions"
+        )
+    joined: list[dict[str, Any]] = []
+    for turns, outcome in zip(groups, outcomes):
+        joined.append({**outcome, "turns": turns})
+    return joined
+
+
 def render(result: dict[str, Any], label: str) -> str:
     lines = [
         f"\n{'=' * 66}",
@@ -127,8 +152,9 @@ def run(
 
     if trace_path is not None:
         trace_path.parent.mkdir(parents=True, exist_ok=True)
-        trace_path.write_text(json.dumps(SINK.by_session(), indent=2), encoding="utf-8")
-        print(f"[eval] traces for {len(SINK.by_session())} sessions -> {trace_path}")
+        traced = attach_outcomes(SINK.by_session(), result["sessions"])
+        trace_path.write_text(json.dumps(traced, indent=2), encoding="utf-8")
+        print(f"[eval] traces for {len(traced)} sessions -> {trace_path}")
     return result
 
 

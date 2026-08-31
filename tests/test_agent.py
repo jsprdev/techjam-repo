@@ -50,7 +50,7 @@ def test_production_agent_degrades_rather_than_raising(agent, profile, monkeypat
     monkeypatch.setattr(
         baseline.TfidfRetriever,
         "retrieve",
-        lambda self, query, k: (_ for _ in ()).throw(RuntimeError("dead")),
+        lambda self, query, k, phrases=(): (_ for _ in ()).throw(RuntimeError("dead")),
     )
     agent.reset("degrade", profile)
     result = agent.respond("degrade", "leather belt", 1, 10)
@@ -97,7 +97,7 @@ def test_a_dead_pipeline_is_actually_detected(strict_agent, profile, monkeypatch
     monkeypatch.setattr(
         baseline.TfidfRetriever,
         "retrieve",
-        lambda self, query, k: (_ for _ in ()).throw(RuntimeError("dead")),
+        lambda self, query, k, phrases=(): (_ for _ in ()).throw(RuntimeError("dead")),
     )
     strict_agent.reset("dead", profile)
     with pytest.raises(RuntimeError):

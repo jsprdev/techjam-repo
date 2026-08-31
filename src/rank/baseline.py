@@ -11,6 +11,12 @@ verbatim from the target product's own `features` and `details`. A whole-phrase
 hit is therefore near-oracle evidence, and much stronger than the bag-of-words
 similarity that put the candidate on the shortlist in the first place.
 
+The output of the blend is a `Belief`, not a bare list. Same arithmetic, same
+ordering, but the distribution it came from survives the call, so the commit
+policy can read how decisive the evidence actually was instead of guessing from
+the ranking alone. `rank()` is still the frozen `Ranker` interface and still
+returns identifiers: it is now one line over `believe()`.
+
 Deterministic throughout. Official scoring may run with networking disabled, so
 an LLM rerank can only ever sit behind `Config.use_llm`, which defaults to off.
 """
@@ -22,6 +28,7 @@ import math
 from src.catalog import Catalog, product_text
 from src.config import Config
 from src.interfaces import Candidate, SlotState
+from src.state.belief import Belief
 
 # A phrase shorter than this matches too much to be evidence of anything.
 MIN_PHRASE_CHARS = 4
@@ -46,24 +53,47 @@ class PriorRanker:
             self._lowered[parent_asin] = cached
         return cached
 
-    def rank(
+    def believe(
         self,
         candidates: list[Candidate],
         slots: SlotState,
         profile: dict,
-    ) -> list[str]:
-        if not candidates:
-            return []
+        depth: int | None = None,
+        sharpen: float = 1.0,
+    ) -> Belief:
+        """Blend the evidence into a belief over the candidate pool.
 
-        shortlist = candidates[: self.config.rerank_depth]
+        Weights are recency weighted when `Config.slot_decay` is below 1.0, so a
+        constraint the customer stated this turn counts for more than one they
+        stated six turns ago. With decay at 1.0 every phrase weighs 1.0 and the
+        term collapses to the plain hit fraction.
+
+        `depth` and `sharpen` come from the track chosen for this turn
+        (`src/policy/intent.py`) and default to the untracked behaviour, so a
+        caller that does not route, such as a diagnostic, gets exactly what this
+        ranker produced before routing existed. `sharpen` above 1.0 pulls the
+        retrieval score's top away from its tail, which is how spec 5.1's
+        "sharpen the belief aggressively around constraint matches" on the Buying
+        track is actually implemented.
+
+        Nothing is filtered. A candidate that matches no phrase keeps its
+        retrieval score and its priors and simply sinks, per spec 5.4, and the
+        pool past the rerank depth is carried in `Belief.tail` rather than
+        discarded.
+        """
+        if not candidates:
+            return Belief(asins=[], scores=[])
+
+        cut = self.config.rerank_depth if depth is None else depth
+        shortlist = candidates[:cut]
         best = max((score for _, score in shortlist), default=0.0) or 1.0
 
-        phrases = [
-            phrase.lower()
-            for phrase in slots.constraints()
-            if len(phrase) >= MIN_PHRASE_CHARS
-        ]
-        boost = self.config.exact_phrase_boost
+        phrases, weights = self._weighted_phrases(slots)
+        # Guards a pathological decay setting where every weight has underflowed
+        # to zero. The blend then reduces to retrieval plus priors, which is a
+        # degraded answer rather than a crash, and agent.py must never raise.
+        weight_total = sum(weights) or 0.0
+        boost = self.config.exact_phrase_boost if weight_total > 0.0 else 0.0
 
         scored: list[tuple[float, str]] = []
         for parent_asin, score in shortlist:
@@ -71,6 +101,8 @@ class PriorRanker:
             if product is None:
                 continue
             total = score / best
+            if sharpen != 1.0:
+                total **= sharpen
 
             ratings = product.get("rating_number") or 0
             total += self.config.weight_popularity * math.log1p(float(ratings)) / 12.0
@@ -81,11 +113,43 @@ class PriorRanker:
 
             if phrases and boost:
                 text = self._text(parent_asin)
-                hits = sum(1 for phrase in phrases if phrase in text)
-                total += boost * (hits / len(phrases))
+                hits = sum(w for phrase, w in zip(phrases, weights) if phrase in text)
+                total += boost * (hits / weight_total)
 
             scored.append((total, parent_asin))
 
         scored.sort(key=lambda pair: -pair[0])
-        tail = [asin for asin, _ in candidates[self.config.rerank_depth :]]
-        return [asin for _, asin in scored] + tail
+        tail = [asin for asin, _ in candidates[cut:]]
+        return Belief(
+            asins=[asin for _, asin in scored],
+            scores=[score for score, _ in scored],
+            tail=tail,
+        )
+
+    def rank(
+        self,
+        candidates: list[Candidate],
+        slots: SlotState,
+        profile: dict,
+    ) -> list[str]:
+        """Return `parent_asin` values, best first. The frozen `Ranker` seam."""
+        return self.believe(candidates, slots, profile).ranking()
+
+    def _weighted_phrases(self, slots: SlotState) -> tuple[list[str], list[float]]:
+        """Constraint phrases paired with their recency weight.
+
+        `SlotState` is a protocol, so a state object that predates decay still
+        works: without `constraint_weights` every phrase weighs 1.0, which is
+        exactly what `Config.slot_decay = 1.0` produces.
+        """
+        raw = slots.constraints()
+        getter = getattr(slots, "constraint_weights", None)
+        raw_weights = list(getter()) if callable(getter) else [1.0] * len(raw)
+
+        phrases: list[str] = []
+        weights: list[float] = []
+        for phrase, weight in zip(raw, raw_weights):
+            if len(phrase) >= MIN_PHRASE_CHARS:
+                phrases.append(phrase.lower())
+                weights.append(float(weight))
+        return phrases, weights

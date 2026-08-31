@@ -76,7 +76,7 @@ def test_pick_attribute_never_asks_an_unanswerable_attribute():
     """category, brand and budget are never returned by the evaluator's
     constraint classifier, so asking them is a guaranteed wasted turn. The
     first version of the policy spent turns 2 and 3 on two of them."""
-    from src.state.slots import UNANSWERABLE
+    from src.policy.question import UNANSWERABLE
 
     slots = Slots()
     picked = [slots.pick_attribute() for _ in range(8)]
