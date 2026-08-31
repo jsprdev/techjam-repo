@@ -28,13 +28,24 @@ Everything below was re-run, not recalled from memory.
 | Fresh clone, judge simulation | identical 0.893583, so nothing depends on this working copy |
 | Working tree | clean, no uncommitted changes |
 
-**Baseline reproduction, added later.** `requirements.txt` pins nothing
-(`numpy>=1.26`, `scikit-learn>=1.4`). On a machine with numpy 2.5.2 / scikit-learn
-1.9.0 the same commit scores **0.892323** on all 200 (MRR 0.7754 vs 0.7796,
-browsing MRR 0.6706 vs 0.675) — TF-IDF tie-breaks shift with the sklearn version.
-Sweep *deltas* on one machine are still valid; comparing an absolute score to the
-0.893583 above is not, until the versions that produced it are pinned. This is a
-project-wide housekeeping item, not a regression.
+**Cross-machine score drift, found and fixed.** The same commit scored
+**0.893583** here and **0.892323** on another machine (MRR 0.7754 against
+0.7796, browsing MRR 0.6706 against 0.675). Root-caused to `_top_k` in
+`src/retrieval/baseline.py`, which selected the candidate pool with
+`np.argpartition`. TF-IDF leaves most of the catalog scoring exactly 0.0, so a
+Browsing shortlist of 800 is mostly drawn from tied items, and argpartition
+resolves ties in whatever order its internal introselect leaves them. That is
+an implementation detail free to change between numpy releases, and it did: 35
+of 800 shortlist slots differed. scikit-learn was identical (1.9.0) on both
+machines, so the earlier attribution to the sklearn version was wrong; the
+differing package was numpy (2.4.6 against 2.5.2).
+
+Ties now break by catalog index, which the frozen catalog fixes, so the score
+is a property of the code rather than of the judge's numpy build. The fix is
+also faster than what it replaced (0.39ms per call against 0.66ms), and
+`requirements.txt` now pins versions as a second line of defence. Two tests in
+`tests/test_interfaces.py` cover it, and both fail against the old
+implementation.
 
 Headline numbers from the official run:
 

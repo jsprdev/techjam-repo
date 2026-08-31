@@ -1,8 +1,16 @@
 # Runtime dependencies. Deliberately small: the organiser may score us under
 # CPU, memory and network restrictions, so nothing here downloads anything at
 # import or at run time.
-numpy>=1.26
-scikit-learn>=1.4
+#
+# Pinned rather than floored, because the score has to be reproducible on the
+# judge's machine and not just on ours. A floating `numpy>=1.26` once produced
+# 0.893583 on numpy 2.4.6 and 0.892323 on 2.5.2 from the same commit, through
+# tie-breaking inside `np.argpartition`. That specific cause is fixed in
+# `src/retrieval/baseline.py::_top_k`, which now breaks ties by catalog index,
+# so these pins are a second line of defence rather than the fix itself. They
+# are the versions every number in the README and docs was measured on.
+numpy==2.4.6
+scikit-learn==1.9.0
 
 # Development only. Not needed to run the agent in the official harness.
 pytest>=8.0

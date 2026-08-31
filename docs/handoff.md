@@ -4,7 +4,7 @@
 > source of truth: it was written later, against the LLM-stage merges this file
 > predates, and it carries the current numbers. This file is kept for history.
 > In particular, sections 2, 3 and 5 below describe the LLM semantic ranking
-> stage as "not built" — it was built afterwards (`docs/llm-semantic-stage.md`).
+> stage as "not built". It was built afterwards (`docs/llm-semantic-stage.md`).
 
 Supersedes the day 1 handoff. Written against every reference document in the repo: the
 organiser's `problem-statement.md` and kit docs, the team's `techjam-detailed-agent-spec.md`

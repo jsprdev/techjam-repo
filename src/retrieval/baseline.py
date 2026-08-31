@@ -170,11 +170,40 @@ class TfidfRetriever:
         return self._fuse(scores, pooled_scores, k)
 
     def _top_k(self, scores: np.ndarray, k: int) -> np.ndarray:
+        """Top k by score, breaking ties by catalog index on every machine.
+
+        The tie-break is the point of this function, not an afterthought.
+        TF-IDF leaves enormous blocks of exactly equal scores: a narrow query
+        matches a few hundred products and the rest of the catalog scores
+        exactly 0.0, so on a Browsing turn asking for k=800 most of the
+        shortlist is drawn from tied items. The obvious `argpartition` leaves
+        that order to numpy's introselect, which is an implementation detail
+        free to change between releases. It did: the same commit scored
+        0.893583 on numpy 2.4.6 and 0.892323 on 2.5.2, because 35 of 800
+        shortlist slots resolved differently. A score that depends on the numpy
+        build the judge happens to install is not a reproducible score.
+
+        So the selection is made by value rather than by position. Everything
+        strictly above the k-th largest score is taken, then the remaining
+        slots are filled from the items tied at it in catalog index order,
+        which the frozen catalog fixes. `np.flatnonzero` returns ascending
+        indices, so ties arrive already ordered and the final stable sort
+        preserves that.
+
+        A full `argsort(kind="stable")` would also be deterministic, and was
+        measured at 5.1ms per call against 0.66ms for the old argpartition,
+        which cost four extra minutes over a 200 session run. This is 0.39ms,
+        so determinism here is actually cheaper than the version it replaces.
+        """
         if k >= len(scores):
-            return np.argsort(-scores)
-        # argpartition is O(n) and we only need the top k ordered.
-        top = np.argpartition(-scores, k)[:k]
-        return top[np.argsort(-scores[top])]
+            return np.argsort(-scores, kind="stable")
+        # The k-th largest value. `partition` only guarantees that element's
+        # position, which is all this needs, and it is O(n).
+        threshold = -np.partition(-scores, k - 1)[k - 1]
+        above = np.flatnonzero(scores > threshold)
+        tied = np.flatnonzero(scores == threshold)
+        selected = np.concatenate([above, tied[: k - above.size]])
+        return selected[np.argsort(-scores[selected], kind="stable")]
 
     def _fuse(self, field_scores: np.ndarray, pooled_scores: np.ndarray, k: int) -> list[Candidate]:
         """Union two retrieval routes, ordered by the pooled route.
