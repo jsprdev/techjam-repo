@@ -38,9 +38,22 @@ def test_an_unenriched_product_takes_the_supplied_default():
     assert prior.appeal_of("MISSING", 0.5) == 0.5
 
 
-def test_the_shipped_artefact_loads(agent):
-    """Guards against committing an artefact the loader silently rejects."""
-    assert len(agent.ranker.prior) > 0, "the shipped semantic prior loaded as empty"
+def test_the_shipped_artefact_is_actually_shipped():
+    """The artefact must be IN THE REPOSITORY, not just on someone's disk.
+
+    artifacts/ is gitignored for sweep and eval output, which silently excluded
+    this file too. A clean clone then had no LLM stage at all: the loader
+    degraded to no signal exactly as designed, so nothing failed loudly and the
+    score quietly dropped back to its without-the-stage value. Caught by cloning
+    the repository fresh and running the README steps.
+    """
+    from pathlib import Path
+
+    from src import semantic
+
+    path = Path(semantic.DEFAULT_PATH)
+    assert path.exists(), f"{path} is missing from the checkout"
+    assert len(semantic.load(path)) > 0, "the shipped semantic prior loaded as empty"
 
 
 def test_the_agent_runs_with_the_artefact_removed(fake_catalog_path, monkeypatch):
