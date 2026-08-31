@@ -5,7 +5,7 @@ evidence behind any claim you want to challenge.
 
 ## Where things stand
 
-The pipeline runs end to end through the official command and scores **0.7511** on all 200
+The pipeline runs end to end through the official command and scores **0.7889** on all 200
 public sessions against a 0.107 baseline, with placeholder modules in all three of your
 slots. That number is a starting line, not a result. It says the scaffolding is sound and
 the headroom is now measurable.
@@ -24,16 +24,22 @@ Current per-scenario breakdown, all 200 through the official harness:
 
 | scenario | n | hit@10 | mrr | mttc |
 | --- | --- | --- | --- | --- |
-| buying | 80 | 0.850 | 0.616 | 4.04 |
-| browsing | 80 | 0.875 | 0.604 | 4.10 |
-| intent_override | 30 | 0.900 | 0.768 | 4.87 |
-| boundary | 10 | 0.600 | 0.533 | 5.60 |
+| buying | 80 | 0.875 | 0.780 | 3.74 |
+| browsing | 80 | 0.875 | 0.661 | 3.90 |
+| intent_override | 30 | 0.900 | 0.900 | 4.80 |
+| boundary | 10 | 0.500 | 0.500 | 6.60 |
 
-**Boundary is now the weakest bucket at 0.600**, but it is only 10 sessions, so it is 5% of
-the score and mostly noise. Do not spend a day there.
+**Boundary is the weakest bucket at 0.500**, but it is 10 sessions, 5% of the score, and
+mostly noise. Do not spend a day there.
 
-**MTTC 4.265 is the biggest remaining block.** Efficiency is 0.674 out of a possible 1.0,
-worth 0.20 of the score. Getting MTTC to 2.5 would add roughly 0.035. That is role 2.
+**MTTC 4.105 is the biggest remaining block.** Efficiency is 0.690 out of a possible 1.0,
+worth 0.20 of the score. Getting MTTC to 2.5 would add roughly 0.032, and it is the one
+number no lever has moved much yet. That is role 2, and it is now the best-value work left.
+
+**Retrieval itself is still untouched.** `weight_title` and the other four field weights have
+zero readers: every field is still pooled into one bag of words, so a word in a care
+instruction counts as much as one in the title. That is role 1, and it is the largest
+completely unexplored area.
 
 ## One thing to know before you write a test
 
