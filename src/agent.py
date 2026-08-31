@@ -187,7 +187,13 @@ class Agent:
             previous_entropy=session.last_entropy,
             config=self.config,
         )
-        candidates = self.retriever.retrieve(query, track.width)
+        # Pass the disclosed phrases as well as the flattened query. The
+        # flattening loses phrase boundaries, and those boundaries are exactly
+        # what carries evidence here: the customer quotes the target product's
+        # own text verbatim, so a whole-phrase hit before truncation is far
+        # stronger than the sum of its tokens. The seam takes them optionally,
+        # so this stays compatible with a retriever that ignores them.
+        candidates = self.retriever.retrieve(query, track.width, slots.constraints())
         belief = self.ranker.believe(
             candidates, slots, slots.profile, depth=track.depth, sharpen=track.sharpen
         )

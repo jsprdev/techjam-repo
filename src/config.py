@@ -30,6 +30,20 @@ class Config:
     weight_description: float = 1.0
     weight_store: float = 1.5
 
+    # From the field-aware retrieval work. weight_details covers the free-form
+    # details dict, which is a distinct field from the five above.
+    weight_details: float = 1.0
+
+    # Weight of the pooled all-fields index inside the field-weighted sum.
+    # 0.0 gives pure per-field behaviour, high values approach a single pooled
+    # index. Swept, because the two schemes trade MRR against MTTC.
+    weight_pooled: float = 3.0
+
+    # Phrase boost applied inside RETRIEVAL, distinct from exact_phrase_boost
+    # which the ranker applies to the shortlist. Retrieval boosts a whole
+    # disclosed phrase before truncation; the ranker boosts it after.
+    retrieval_exact_phrase_boost: float = 2.0
+
     # Multiplier applied when a whole disclosed phrase appears verbatim in a
     # product's text. The customer quotes the target's own record, so exact
     # phrase agreement is the single strongest signal available. Set to 1.0 to
