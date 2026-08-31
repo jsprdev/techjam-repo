@@ -2,12 +2,26 @@
 # CPU, memory and network restrictions, so nothing here downloads anything at
 # import or at run time.
 #
-# Pinned exactly, because the score depends on the version. scikit-learn's
-# TF-IDF breaks ties differently between releases, and the ranker inherits that
-# ordering: the same commit scores 0.892323 on scikit-learn 1.9.0 and 0.893583
-# on an older one. A floor like >=1.4 therefore does not reproduce a published
-# number, which the reproducibility rules require. Tested on Python 3.12.13.
-numpy==2.5.2
+# Pinned rather than floored so a published number is reproducible, which the
+# rules require. These are the versions every score in the README and docs was
+# measured on.
+#
+# numpy is 2.4.6 and not the newer 2.5.2 deliberately: 2.5.2 declares
+# Requires-Python >=3.12, so pinning it makes `pip install -r requirements.txt`
+# fail outright on Python 3.11 with "No matching distribution found". 2.4.6
+# declares >=3.11 and so installs on 3.11, 3.12 and 3.13. A pin a judge cannot
+# install is worse than no pin at all.
+#
+# The pin is a second line of defence, not the fix. The same commit once scored
+# 0.893583 on numpy 2.4.6 and 0.892323 on 2.5.2, and the cause was ours: the
+# candidate pool was selected with `np.argpartition`, whose order among equal
+# scores is an implementation detail free to change between releases. TF-IDF
+# leaves most of the catalog at exactly 0.0, so a wide shortlist is mostly
+# drawn from tied items. `src/retrieval/baseline.py::_top_k` now breaks ties by
+# catalog index instead, which the frozen catalog fixes, so the score is a
+# property of the code rather than of the installed numpy. scikit-learn was
+# identical on both machines, so it was never the cause.
+numpy==2.4.6
 scikit-learn==1.9.0
 
 # Development only. Not needed to run the agent in the official harness, and it

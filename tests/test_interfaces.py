@@ -6,6 +6,8 @@ their replacement still fits the seam the other two build against.
 
 from __future__ import annotations
 
+import numpy as np
+
 from src.catalog import load
 from src.config import Config
 from src.interfaces import Ranker, Retriever, SlotState
@@ -106,3 +108,41 @@ def test_rank_returns_bare_asins_best_first(fake_catalog_path):
     assert all(isinstance(asin, str) for asin in ranked)
 
 
+
+
+def test_top_k_breaks_ties_by_catalog_index(fake_catalog_path):
+    """Tied scores must resolve identically on every numpy build.
+
+    TF-IDF leaves most of the catalog scoring exactly 0.0, so a wide Browsing
+    shortlist is mostly drawn from tied items. The previous argpartition
+    implementation left that order to numpy's introselect, and the same commit
+    scored 0.893583 on numpy 2.4.6 and 0.892323 on 2.5.2 because of it. Ties
+    must break by catalog index, which the frozen catalog fixes.
+    """
+    retriever = TfidfRetriever(load(fake_catalog_path), Config())
+    n = len(retriever._asins)
+
+    # One clear winner, everything else exactly tied. The tail is then wholly
+    # determined by the tie-break rule, which is the thing under test.
+    scores = np.zeros(n)
+    scores[n - 1] = 1.0
+
+    order = retriever._top_k(scores, n)
+    assert order[0] == n - 1, "the real winner must still come first"
+    tail = order[1:].tolist()
+    assert tail == sorted(tail), "tied items must come back in catalog order"
+
+
+def test_top_k_is_consistent_between_the_truncated_and_full_paths(fake_catalog_path):
+    """Asking for k items must give the same items as asking for all and slicing.
+
+    The two used to run different algorithms, so they could disagree about
+    which of several tied items made the cut.
+    """
+    retriever = TfidfRetriever(load(fake_catalog_path), Config())
+    n = len(retriever._asins)
+    scores = np.zeros(n)
+    scores[0] = 0.5
+
+    k = max(1, n // 2)
+    assert retriever._top_k(scores, k).tolist() == retriever._top_k(scores, n)[:k].tolist()
