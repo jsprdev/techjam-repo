@@ -188,3 +188,70 @@ them from the query costs 0.037) but not for *ranking* a shortlist retrieval has
 narrowed, where the verbatim phrase overlap dominates. Anyone revisiting this should start
 from the discriminating-tags-only table above, not from the full set, and would need a
 `rerank_depth` re-sweep alongside it (consolidation 4.4).
+
+---
+
+## Dual-track routing: does the second track change anything?
+
+The router in `policy/intent.py` classifies every turn Buying or Browsing and scores 1.000
+against the session label on turn one (`evaluation/intent_audit.py`). This section asks the
+harder question: once it has classified, does the classification change the output?
+
+**Measured answer: no, and every attempt to make it change the output made the score worse.**
+
+### The router's decision is currently inert
+
+The two tracks differ in `Track.width`, the retrieval truncation: 200 for Buying, 800 for
+Browsing. But `track_depth_browsing` and `track_depth_buying` both default to 200, so the
+ranker only ever rescores the top 200 candidates. The 600 extra items a Browsing turn
+retrieves are thrown away before anything looks at them.
+
+Two sweeps confirm it. Neither moves any metric by any amount:
+
+| `truncate_browsing` | TechnicalScore | HitRate@10 | MRR | MTTC |
+| --- | --- | --- | --- | --- |
+| 200 | 0.9201 | 0.983 | 0.848 | 2.30 |
+| 800 | 0.9201 | 0.983 | 0.848 | 2.30 |
+
+(60 train sessions. `artifacts/sweep_route_inert.json`.)
+
+| `intent_constraint_weight` | TechnicalScore | HitRate@10 | MRR | MTTC |
+| --- | --- | --- | --- | --- |
+| 0.0 | 0.8969 | 0.975 | 0.796 | 2.48 |
+| 0.05 | 0.8969 | 0.975 | 0.796 | 2.48 |
+| 0.2 (shipped) | 0.8969 | 0.975 | 0.796 | 2.48 |
+
+(160 train sessions. `artifacts/sweep_intent_constraint.json`.) The constraint signal is the
+heaviest input to the router, and zeroing it changes nothing downstream, which is the same
+result seen from the other side.
+
+### Making the track matter costs score
+
+The obvious repair is to let a Browsing turn actually use its wider pool, by raising the
+depth the ranker rescores on Browsing turns only. This is what per-track configuration is
+for and it had never been swept.
+
+| `track_depth_browsing` | TechnicalScore | HitRate@10 | MRR | MTTC |
+| --- | --- | --- | --- | --- |
+| **200 (shipped)** | **0.8969** | 0.975 | **0.796** | 2.48 |
+| 400 | 0.8858 | 0.975 | 0.752 | 2.37 |
+| 800 | 0.8859 | **0.981** | 0.737 | 2.29 |
+
+(160 train sessions. `artifacts/sweep_track_depth_browsing.json`.)
+
+Widening costs about 0.011. MRR falls from 0.796 to 0.737 while MTTC improves from 2.48 to
+2.29, and arithmetically that trade is a loss: MRR carries 0.30 and Efficiency 0.20.
+
+### What this means, stated plainly
+
+The optimal configuration gives both tracks the same rerank depth, so the router's output
+does not currently change the shortlist the customer sees. We would rather say that than
+leave a traceability table implying otherwise.
+
+Two things are worth keeping from it anyway. The router itself is correct and measured, and
+it is the seam any track-specific behaviour would attach to, at the cost of a config change
+rather than a rewrite. And the depth-800 row is the same shape as the field-aware finding
+above: **HitRate rises to 0.981**, the best any configuration has produced, while MRR falls.
+The wider Browsing pool genuinely contains targets the narrow pool misses. Nothing we have
+ranks them well enough to profit. That is the same open thread as the field-aware route, and
+it is where the remaining score is: browsing MRR is 0.675 against buying's 0.828.

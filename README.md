@@ -163,8 +163,8 @@ Every requirement the brief names, and where it is answered.
 | Multi-route retrieval: field-aware route | I | `retrieval/baseline.py`, weights default 0.0 | built and swept, `docs/retrieval-merge-finding.md` |
 | In-memory pipeline, no external store | I | whole system | 875 MB peak, no network |
 | LLM semantic ranking | I | `offline/build_semantic_prior.py`, `src/semantic.py`, `src/language/rerank.py` | offline artefact in the shipped path, worth 0.0005; live stage off by default |
-| Custom dynamic truncation | I, in-scope | `policy/intent.py` `Track.width`, `Track.depth` | `self_evolution.py` |
-| Heterogeneous routing weights | I, in-scope | `Config.track_*` per track | swept, `artifacts/sweep_*.json` |
+| Custom dynamic truncation | I, in-scope | `policy/intent.py` `Track.width`, `Track.depth` | built and swept; the measured optimum is equal depth on both tracks, so it does not currently change the output. Disclosed below |
+| Heterogeneous routing weights | I, in-scope | `Config.track_*` per track | swept, `artifacts/sweep_track_depth_browsing.json` |
 | Dynamic state machine, accumulation | II | `state/slots.py` `observe` | `tests/test_policy.py` |
 | Intent override, erasure and rewriting | II | `state/slots.py` `_pivot` | `override_audit.py`, 30/30 |
 | Slot decay over time | II, in-scope | `state/slots.py` `constraint_weights` | `Config.slot_decay`, swept |
@@ -311,6 +311,27 @@ reorders 20 candidates when HitRate is already 0.975.
 pooled index and fused with it. Every configuration scored at or below the pooled index alone,
 costing about 0.046 at the best fused operating point. The code is kept with its weights
 defaulted to zero so the measurement can be reproduced.
+
+**The router is correct, and its decision does not currently change the output.** This is the
+deviation we most expect to be asked about, so it is stated first rather than buried. The
+Buying/Browsing router scores 1.000 against the session label on turn one, and the two tracks
+do differ in retrieval width, 200 against 800. But both tracks rerank to depth 200, so the
+600 extra candidates a Browsing turn retrieves are discarded before anything reads them.
+Sweeping `truncate_browsing` between 200 and 800 moves no metric by any amount, and zeroing
+`intent_constraint_weight`, the router's heaviest input, moves no metric either.
+
+We tried to make it matter. Raising the Browsing rerank depth is exactly what per-track
+configuration is for and it costs 0.011: MRR falls from 0.796 to 0.737 while MTTC improves
+from 2.48 to 2.29, and MRR carries 0.30 against Efficiency's 0.20. The full table is in
+`docs/retrieval-merge-finding.md`.
+
+So the honest position is that the optimal configuration gives both tracks the same depth.
+The router stays because it is measured, because it is the seam any track-specific behaviour
+attaches to at the cost of a config change, and because of one result inside that sweep: at
+depth 800 HitRate@10 reaches **0.981**, the highest any configuration has produced. The wider
+Browsing pool really does contain targets the narrow one misses. Nothing we have ranks them
+well enough to profit, which is the same open thread as the field-aware retrieval route and
+is where the remaining score is.
 
 **Cross-session long-term profiling is not implemented.** Pillar III asks for continuously
 updated long-term user profiles, and the constraints define every session as an isolated
