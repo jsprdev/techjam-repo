@@ -62,6 +62,16 @@ design choice was supported by an ablation or diagnostic, including popularity
 weight, rerank depth, clarification order, intent override handling, and the
 decision to keep optional components off by default.
 
+The one we are most pleased with is the discipline around measurement. Forty of
+the 200 public sessions were reserved on day one, stratified and seeded, and no
+tuning decision ever saw them. We spent them once, at the end, on the frozen
+configuration: **0.8801 held out against 0.8969 on the sessions we tuned on**, a
+gap of 0.0168, with Hit Rate@10 identical at 0.975 on both, so nothing about
+retrieval was fitted to the training set. We also fixed a bug that made the
+score depend on the installed numpy version, and verified the same number across
+three Python and numpy combinations. A score that moves with the grader's
+machine is not a score.
+
 ## What we learned
 
 The best-looking architecture is not always the best-performing one.

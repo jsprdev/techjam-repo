@@ -385,6 +385,40 @@ Required disclosures.
 | Memory | 876 MB peak across a 200 session run |
 | Network | Not required. `evaluation/verify_offline.py` runs a ten turn session with every socket entry point poisoned, and is itself negative-controlled: injecting a real socket call makes it fail. |
 
+## The held-out result
+
+Forty of the 200 public sessions were reserved on day one, stratified by scenario and seeded
+at 20260101, and no tuning decision ever saw them. `evaluation/splits.py` makes the split
+reproducible. **They have now been spent, once, on the final configuration**, which is what
+they were for.
+
+| Split | n | TechnicalScore | HitRate@10 | MRR | MTTC |
+| --- | --- | --- | --- | --- | --- |
+| train (tuned on) | 160 | 0.8969 | 0.975 | 0.796 | 2.48 |
+| **holdout (never seen)** | **40** | **0.8801** | **0.975** | **0.712** | **2.05** |
+
+The generalisation gap is **0.0168**. HitRate is identical on both, so nothing about retrieval
+was fitted to the training sessions; the entire gap is MRR, which is where the tuning went.
+
+| Scenario | n | HitRate@10 | MRR |
+| --- | --- | --- | --- |
+| browsing | 16 | 1.000 | 0.564 |
+| buying | 16 | 0.938 | 0.716 |
+| intent_override | 6 | 1.000 | 1.000 |
+| boundary | 2 | 1.000 | 1.000 |
+
+Two caveats we would rather state than have inferred. **Forty sessions is small**: with 16
+browsing sessions a single rank change moves that MRR by about 0.03, so the per-scenario rows
+are indicative, not precise. And **this number is now spent.** It is honest because it was
+measured once, on a configuration that was frozen before the run. If anyone changes a tunable
+in `config.py` after this commit, this row stops describing the shipped system, and the right
+response is to say so rather than to quietly re-run it, because a held-out set re-used after
+seeing its result is just another training set.
+
+The holdout also confirms the browsing story: HitRate 1.000, MRR 0.564. On unseen sessions the
+agent finds the target every time and ranks it badly, which is the same gap the rank
+diagnostics attribute to popularity breaking a phrase-evidence tie.
+
 ## On trusting these numbers
 
 Two habits, because a check that cannot fail is worse than no check: it reports

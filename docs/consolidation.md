@@ -243,11 +243,19 @@ and the hard limits mean a model on the critical path is a way to score zero
 rather than a way to score higher. The zero-LLM fallback is also a real
 Feasibility argument, which is 15% of the grade.
 
-### 4.10 Forty sessions were reserved and have never been touched
+### 4.10 Forty sessions were reserved, and spent exactly once
 
 `holdout_size = 40`, stratified, seeded at 20260101. Every tuning decision above
-was made on the other 160. The held-out curve is worth more to a judge than the
-score itself, and it is only worth something if it is spent once.
+was made on the other 160. The slice was then spent once, on the final
+configuration, and the result is **0.8801** against 0.8969 on train.
+
+The gap is 0.0168 and it is entirely MRR: HitRate is 0.975 on both splits, so
+nothing about retrieval was fitted to the training sessions. The full per
+scenario table is in the README.
+
+A held-out number is only worth something if it is spent once, so this one is
+now closed. Any tunable changed after this point invalidates it, and the honest
+response is to say so rather than to re-run it.
 
 ### 4.11 Profile preference-tags feed retrieval but not ranking
 
@@ -329,9 +337,12 @@ and TechnicalScore is one input to the first of those, not the whole of it.
 
 ### 6.2 Technical work worth doing, in priority order
 
-1. **Spend the holdout.** `python evaluation/run_eval.py --split holdout`. One
-   command, exactly once, at the very end. Running it early destroys its only
-   value. This is the number that tells us whether we overfit.
+1. ~~**Spend the holdout.**~~ **Done.** Run once on the final configuration:
+   **0.8801** against 0.8969 on train, a generalisation gap of 0.0168, with
+   HitRate identical at 0.975 on both so the entire gap is MRR. Full table in
+   the README. It is now spent: if any tunable changes after commit `12a36af`,
+   that row stops describing the shipped system and the honest response is to
+   say so, not to re-run it.
 2. **Run the live reranker once with a real key.** 478 calls at about 1,045
    input tokens each: **$0.64 on Haiku 4.5**, $1.29 on Sonnet 5, $3.22 on Opus
    5. Sixty-four cents to replace a guess with a fact.
