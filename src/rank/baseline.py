@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import math
 
+from src import semantic
 from src.catalog import Catalog, product_text
 from src.config import Config
 from src.interfaces import Candidate, SlotState
@@ -40,6 +41,15 @@ class PriorRanker:
     def __init__(self, catalog: Catalog, config: Config | None = None) -> None:
         self.catalog = catalog
         self.config = config or Config()
+        # The offline LLM artefact, read once. Absent means no signal.
+        self.prior = semantic.load()
+        # Unenriched products sit at the mean of the enriched ones, so a partial
+        # artefact does not turn coverage itself into a ranking signal.
+        self._appeal_default = (
+            sum(self.prior.appeal.values()) / len(self.prior.appeal)
+            if len(self.prior)
+            else 0.0
+        )
         # Lowercased product text, built lazily and only for products that
         # actually reach a shortlist. Precomputing all 50,000 would add seconds
         # to construction for text most sessions never look at.
@@ -106,6 +116,11 @@ class PriorRanker:
 
             ratings = product.get("rating_number") or 0
             total += self.config.weight_popularity * math.log1p(float(ratings)) / 12.0
+
+            if self.config.weight_appeal and len(self.prior):
+                total += self.config.weight_appeal * self.prior.appeal_of(
+                    parent_asin, self._appeal_default
+                )
 
             average = product.get("average_rating")
             if isinstance(average, (int, float)):

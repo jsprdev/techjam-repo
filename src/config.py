@@ -165,6 +165,11 @@ class Config:
     # because the prior only reorders a shortlist retrieval already filtered.
     weight_popularity: float = 2.0
     weight_rating: float = 0.05
+
+    # Weight of the offline LLM appeal judgment from artifacts/semantic_prior.json.
+    # Set to 0.0 to disable the semantic stage entirely; the agent then behaves
+    # exactly as it did before the artefact existed.
+    weight_appeal: float = 1.0
     # Shortlist depth handed to the reranker. This interacts with the
     # truncation width above: effective depth is min(rerank_depth, width), so
     # anything past truncate_buying (200) only affects Browsing turns.
