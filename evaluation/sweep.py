@@ -42,18 +42,9 @@ from src.config import Config  # noqa: E402
 from src.trace import SINK  # noqa: E402
 
 # Config fields that change the retrieval index and therefore force an expensive
-# rebuild. Everything else can reuse a built agent. Role 1: add to this list
-# when you start reading a weight at index build time, or the sweep will
-# silently report stale numbers.
-INDEX_FIELDS = frozenset(
-    {
-        "weight_title",
-        "weight_features",
-        "weight_categories",
-        "weight_description",
-        "weight_store",
-    }
-)
+# rebuild. Field matrices are built independently of their runtime blending
+# weights, so every current retrieval tuning parameter can reuse one index.
+INDEX_FIELDS = frozenset()
 
 
 def parse_grid(pairs: list[str]) -> dict[str, list[Any]]:

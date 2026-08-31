@@ -153,7 +153,11 @@ class Agent:
         slots.observe(user_message, turn)
         query = slots.to_query()
         width = self._truncation_width(slots)
-        candidates = self.retriever.retrieve(query, width)
+        candidates = self.retriever.retrieve(
+            query,
+            width,
+            phrases=slots.constraints(),
+        )
         ranked = self.ranker.rank(candidates, slots, slots.profile)
         if not ranked:
             ranked = self._fallback(top_k)
