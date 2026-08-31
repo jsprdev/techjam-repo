@@ -63,11 +63,12 @@ target still finished below first, the leading candidate's mean advantage was do
 the popularity prior (+0.2136); retrieval contributed only +0.0442 and rating and phrase
 components were effectively neutral.
 
-Therefore the next experiment is deliberately narrow: add a small, deterministic
-constraint-specificity signal to the reranker, then measure it on the train split. Do not
+The first deliberately narrow experiment—a small, deterministic score for longer exact
+constraints—was swept from 0 through 4 on an initial 40 training sessions. It did not
+change any rank or metric, so it was rejected and not retained in the scoring path. Do not
 globally reduce popularity, add a second catalog-wide index, or inspect the holdout before
-the feature is frozen. The latter would raise the current approximately 937 MB peak memory
-without an announced memory limit.
+a promising feature is found. The latter would raise the current approximately 937 MB peak
+memory without an announced memory limit.
 
 ## Score ownership
 

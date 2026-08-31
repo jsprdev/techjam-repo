@@ -42,8 +42,10 @@ The reranker moved the target from mean retrieval position 33.26 to mean final p
 1.97: 118 promotions, three demotions, and 23 unchanged. In rank-one misses, the leading
 candidate's average advantage was +0.2136 from popularity but only +0.0442 from retrieval;
 rating and phrase evidence were neutral. Do not lower the popularity prior globally: the
-earlier sweep showed it improves overall quality. The next scoped test is a small
-constraint-specificity reranker increment for close candidates, evaluated only on train.
+earlier sweep showed it improves overall quality. A small constraint-specificity increment
+for longer exact phrases was swept at weights 0 through 4 on an initial 40 training
+sessions; it changed no rank or metric and was rejected. The scoring default remains
+unchanged.
 
 ## Where things stand
 
