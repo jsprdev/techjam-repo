@@ -61,3 +61,32 @@ def test_evaluator_files_are_byte_identical_to_the_kit():
             f"{path} has been modified. The submission rules forbid editing "
             f"evaluator files. Expected {expected}, got {actual}."
         )
+
+
+# The organiser's catalog, unmodified. The rules make it strictly read only, and
+# it is committed rather than downloaded so a judge's reproduction does not
+# depend on a release asset staying reachable. Pinning the hash makes an
+# accidental rewrite fail here instead of quietly changing every score we
+# publish, which is the failure that would be hardest to notice and worst to
+# discover late.
+PRISTINE_CATALOG_SHA256 = "da979b05a68af864cb0dcf9ee6a81c010c7e66a57978ad286c7a2e005fc69a67"
+PRISTINE_CATALOG_ROWS = 50000
+
+
+def test_the_catalog_is_the_organisers_file_unmodified():
+    """A mutated catalog invalidates every number in the README."""
+    import hashlib
+
+    path = KIT / "data" / "catalog.jsonl"
+    assert path.exists(), (
+        f"{path} is missing. It is committed, so a clone should have it; "
+        "if it is absent, something removed it from the working tree."
+    )
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    assert digest == PRISTINE_CATALOG_SHA256, (
+        f"{path} has been modified. The rules keep the catalog strictly read only. "
+        f"Expected {PRISTINE_CATALOG_SHA256}, got {digest}."
+    )
+    with path.open("rb") as handle:
+        rows = sum(1 for _ in handle)
+    assert rows == PRISTINE_CATALOG_ROWS, f"expected 50,000 products, found {rows}"

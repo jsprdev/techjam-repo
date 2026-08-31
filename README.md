@@ -37,13 +37,18 @@ Python 3.11 or newer.
 pip install -r requirements.txt
 ```
 
-Then fetch the frozen catalog, which is not committed because it is 58 MB:
+**The frozen catalog is committed**, at `techjam-conversational-search/data/catalog.jsonl`,
+so a clone is ready to run and there is nothing to download. It is 58 MB, which is under
+GitHub's 100 MB limit, and we would rather spend that than have a judge's reproduction depend
+on a release asset still being reachable.
+
+It is the organiser's file byte for byte, unmodified, and the rules keep it read-only. Verify
+it if you like:
 
 ```bash
 cd techjam-conversational-search/data
-curl -L -o catalog.jsonl.gz \
-  https://github.com/TechJam2026/techjam-conversational-search/releases/download/participant-kit/catalog.jsonl.gz
-gunzip catalog.jsonl        # expect 50,000 rows
+wc -l catalog.jsonl     # 50000
+sha256sum catalog.jsonl # da979b05a68af864cb0dcf9ee6a81c010c7e66a57978ad286c7a2e005fc69a67
 ```
 
 ## Reproducing the score
