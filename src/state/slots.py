@@ -9,6 +9,19 @@ budget, colour, preference and additional to a search over a clothing catalog.
 
 So this module's real job is separating signal from framing before anything
 downstream sees it.
+
+Two of the three operations the spec's state machine requires (5.5) live here:
+
+- **Accumulation.** A new constraint arrives and joins the state.
+- **Override.** The customer pivots, and the superseded constraints are demoted
+  rather than deleted. See `OVERRIDE` below for why deletion is wrong here.
+- **Decay.** Confidence in a constraint weakens each turn it is not reinforced,
+  exposed through `constraint_weights` and consumed by the ranker.
+
+`_exhausted` is the runtime reliability reweighting of spec 7.1: an attribute the
+customer could not answer is retired for the rest of the session, so the policy
+adapts its own question plan from evidence gathered inside the session. Which
+attribute to ask is `src/policy/question.py`; this file only records the answer.
 """
 
 from __future__ import annotations
@@ -17,42 +30,7 @@ import re
 from dataclasses import dataclass, field
 
 from src.config import Config
-
-# The ask order, measured rather than assumed.
-#
-# The customer only answers an attribute if one of the target's own constraint
-# phrases falls into that bucket. Measured across all 200 public sessions, the
-# buckets those phrases actually land in are:
-#
-#     feature    50.5% of constraints, answerable in 96.0% of sessions
-#     material   37.8%                                76.5%
-#     color       7.5%                                25.5%
-#     style       2.4%                                 9.0%
-#     size        1.4%                                 4.5%
-#     use_case    0.5%                                 2.0%
-#
-# Reproduce with the bucket audit in evaluation/ask_yield.py.
-ATTRIBUTES_BY_YIELD = (
-    "feature",
-    "material",
-    "color",
-    "style",
-    "size",
-    "use_case",
-)
-
-# Asking any of these is a guaranteed miss. Nothing the customer says is ever
-# classified into them, so the reply is always "I don't have an additional
-# preference" and the information the turn could have bought is lost. The first
-# version of this module asked category and brand on turns 2 and 3, spending
-# the two most valuable early asks on questions with no possible answer.
-UNANSWERABLE = ("category", "brand", "budget")
-
-# Matches ANY undisclosed constraint regardless of bucket, so it is the single
-# most productive ask available. Kept as a fallback rather than the default
-# because "tell me anything else" is a worse thing to say to a shopper than a
-# specific question, and the specific questions above already reach 96%.
-WILDCARD = "other"
+from src.policy import question as question_policy
 
 # Utterances that carry no information. Matching these is worth more than any
 # other single change in this module: they are frequent, and every one of them
@@ -61,6 +39,28 @@ NO_INFORMATION = (
     re.compile(r"^i don't have an additional preference for\b", re.I),
     re.compile(r"^i don't have a preference for\b", re.I),
     re.compile(r"^those options are not quite right yet\b", re.I),
+)
+
+# A pivot: the customer redirects rather than adds. The first pattern is the
+# simulator's exact wording, the rest are the ordinary English a real shopper
+# uses, so the detector is not purely fitted to this harness.
+#
+# MEASURED, AND IT CHANGES THE DESIGN: across all 30 public intent_override
+# sessions the preference the customer says to ignore is itself lifted from the
+# target product's own record, and is literally present in that product's
+# searchable text in 28 of the 30 (the other two differ only by "key: value"
+# against "key value" formatting). The pivot is a change of emphasis, not a
+# contradiction. Erasing the old slot therefore deletes true evidence about the
+# target. So an override demotes, exactly as spec 5.4 requires everywhere else,
+# and `Config.override_demote = 0.0` reproduces literal erasure for anyone who
+# wants to check that claim rather than take it. Reproduce with
+# evaluation/override_audit.py.
+OVERRIDE = (
+    re.compile(r"^actually,\s*ignore my earlier preference\.", re.I),
+    re.compile(
+        r"^(?:actually|instead|on second thought|scratch that|forget (?:that|it))\b",
+        re.I,
+    ),
 )
 
 # Conversational framing wrapped around the payload. Everything before the
@@ -86,6 +86,19 @@ OPENING = re.compile(
 
 
 @dataclass
+class Phrase:
+    """One constraint the customer disclosed, and when they disclosed it.
+
+    The turn is what makes decay possible: without it every constraint weighs
+    the same forever and a turn one aside outranks a turn eight statement.
+    """
+
+    text: str
+    turn: int
+    superseded: bool = False
+
+
+@dataclass
 class Slots:
     """Accumulated dialogue state for one session."""
 
@@ -93,10 +106,11 @@ class Slots:
     turn: int = 0
     profile: dict = field(default_factory=dict)
     category: str = ""
-    _phrases: list[str] = field(default_factory=list)
+    _phrases: list[Phrase] = field(default_factory=list)
     _asked: list[str] = field(default_factory=list)
     _exhausted: set[str] = field(default_factory=set)
     _informative_turns: int = 0
+    _pivot_turns: list[int] = field(default_factory=list)
 
     # -- ingest --------------------------------------------------------------
 
@@ -114,26 +128,46 @@ class Slots:
                 if not text:
                     return
 
+        if any(pattern.match(text) for pattern in OVERRIDE):
+            self._pivot(turn)
+
         if any(pattern.match(text) for pattern in NO_INFORMATION):
             # The customer just told us this bucket is empty for their target.
-            # Record it so the policy never spends another turn on it.
+            # Record it so the policy never spends another turn on it. This is
+            # the runtime reliability reweighting of spec 7.1: the question plan
+            # adapts from evidence gathered inside the session.
             if self._asked:
                 self._exhausted.add(self._asked[-1])
             if self.config.drop_no_information:
                 return
 
-        for phrase in self._payloads(text):
-            if not phrase:
+        known = {phrase.text for phrase in self._phrases}
+        for text_part in self._payloads(text):
+            if not text_part:
                 continue
             # Deliberately NOT deduplicated. A constraint the customer states
             # twice is one they care about, and repeating it in the query
             # raises its term frequency. Treating repetition as redundancy
             # measurably loses score. Config.dedupe_phrases exists to re-test
             # this rather than take it on faith.
-            if self.config.dedupe_phrases and phrase in self._phrases:
+            if self.config.dedupe_phrases and text_part in known:
                 continue
-            self._phrases.append(phrase)
+            self._phrases.append(Phrase(text=text_part, turn=turn))
+            known.add(text_part)
             self._informative_turns += 1
+
+    def _pivot(self, turn: int) -> None:
+        """Handle an Intent Override: demote what came before, keep it all.
+
+        Everything already accumulated is marked superseded, and what arrives on
+        this turn lands at full weight. Nothing is removed, because the audit
+        above shows the superseded constraint is still true of the target in 28
+        of 30 public override sessions. `Config.override_demote` sets how far it
+        falls; 0.0 is literal erasure and is there to be measured, not used.
+        """
+        self._pivot_turns.append(turn)
+        for phrase in self._phrases:
+            phrase.superseded = True
 
     def _payloads(self, text: str) -> list[str]:
         """Strip framing and split a disclosure into its individual constraints.
@@ -153,7 +187,33 @@ class Slots:
 
     def constraints(self) -> list[str]:
         """The disclosed constraint phrases, framing removed, most recent last."""
-        return list(self._phrases)
+        return [phrase.text for phrase in self._phrases]
+
+    def constraint_weights(self) -> list[float]:
+        """Confidence in each constraint, aligned with `constraints()`.
+
+        Two effects multiply. Decay weakens a constraint by `Config.slot_decay`
+        for every turn since the customer last stated it, so recent evidence
+        wins ties against old evidence. Supersession applies
+        `Config.override_demote` to anything the customer pivoted away from.
+
+        The ranker consumes this. `to_query` deliberately does not: retrieval
+        takes a plain string, and the only way to express a weight in a bag of
+        words is repetition, which collides with the measured finding that
+        repeated phrases are already signal rather than noise. Decay therefore
+        reweights the evidence, not the query, and that limit is stated in the
+        README rather than hidden.
+        """
+        decay = self.config.slot_decay
+        demote = self.config.override_demote
+        weights: list[float] = []
+        for phrase in self._phrases:
+            age = max(0, self.turn - phrase.turn)
+            weight = decay ** age if decay != 1.0 else 1.0
+            if phrase.superseded:
+                weight *= demote
+            weights.append(weight)
+        return weights
 
     def to_query(self) -> str:
         parts: list[str] = []
@@ -161,7 +221,7 @@ class Slots:
             # The opening category is the single most reliable signal we get:
             # it is the tail of the target's own category path.
             parts.append(self.category)
-        parts.extend(self._phrases)
+        parts.extend(phrase.text for phrase in self._phrases)
         if self.config.use_profile_tags:
             parts.extend(str(tag) for tag in (self.profile.get("preference_tags") or []))
         return " ".join(parts)
@@ -171,24 +231,30 @@ class Slots:
         """How many turns actually told us something. Drives the ask policy."""
         return self._informative_turns
 
+    @property
+    def pivot_turns(self) -> list[int]:
+        """Turns on which the customer overrode their earlier preference."""
+        return list(self._pivot_turns)
+
+    @property
+    def retired_attributes(self) -> set[str]:
+        """Attributes the customer could not answer, retired for this session."""
+        return set(self._exhausted)
+
     # -- ask policy ----------------------------------------------------------
 
     def pick_attribute(self) -> str | None:
-        """Choose the next attribute to ask about.
+        """Choose the next attribute to ask about, and remember having asked it.
 
-        Ordered by measured yield, skipping anything already asked. An attribute
-        that came back empty is never retried: the customer told us that bucket
-        is empty for this target, and asking again spends a turn to be told so
-        twice.
+        The choice itself is `src/policy/question.py`. This method stays because
+        `SlotState` in `src/interfaces.py` is frozen and every consumer calls it,
+        and because recording the ask is state, which belongs here rather than in
+        the policy.
         """
-        for attribute in ATTRIBUTES_BY_YIELD:
-            if attribute not in self._asked and attribute not in self._exhausted:
-                self._asked.append(attribute)
-                return attribute
-        if self.config.allow_other_fallback and WILDCARD not in self._exhausted:
-            self._asked.append(WILDCARD)
-            return WILDCARD
-        return None
+        attribute = question_policy.choose(self._asked, self._exhausted, self.config)
+        if attribute is not None:
+            self._asked.append(attribute)
+        return attribute
 
     @property
     def asked(self) -> list[str]:
