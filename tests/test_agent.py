@@ -50,7 +50,7 @@ def test_production_agent_degrades_rather_than_raising(agent, profile, monkeypat
     monkeypatch.setattr(
         baseline.TfidfRetriever,
         "retrieve",
-        lambda self, query, k: (_ for _ in ()).throw(RuntimeError("dead")),
+        lambda self, query, k, phrases=(): (_ for _ in ()).throw(RuntimeError("dead")),
     )
     agent.reset("degrade", profile)
     result = agent.respond("degrade", "leather belt", 1, 10)
@@ -97,7 +97,7 @@ def test_a_dead_pipeline_is_actually_detected(strict_agent, profile, monkeypatch
     monkeypatch.setattr(
         baseline.TfidfRetriever,
         "retrieve",
-        lambda self, query, k: (_ for _ in ()).throw(RuntimeError("dead")),
+        lambda self, query, k, phrases=(): (_ for _ in ()).throw(RuntimeError("dead")),
     )
     strict_agent.reset("dead", profile)
     with pytest.raises(RuntimeError):
@@ -117,3 +117,23 @@ def test_retrieval_finds_the_right_product(strict_agent, profile, query, expecte
     strict_agent.reset("finds", profile)
     result = strict_agent.respond("finds", query, 1, 10)
     assert result["recommendations"][0]["parent_asin"] == expected_top
+
+
+def test_agent_passes_disclosed_phrases_to_retrieval(strict_agent, profile, monkeypatch):
+    import src.retrieval.baseline as baseline
+
+    captured = {}
+
+    def retrieve(self, query, k, phrases=()):
+        captured["phrases"] = tuple(phrases)
+        return [("B000000001", 1.0)]
+
+    monkeypatch.setattr(baseline.TfidfRetriever, "retrieve", retrieve)
+    strict_agent.reset("phrase-evidence", profile)
+    strict_agent.respond(
+        "phrase-evidence",
+        "For that, what matters is: Buckle closure; 100% Leather.",
+        2,
+        10,
+    )
+    assert captured["phrases"] == ("Buckle closure", "100% Leather")

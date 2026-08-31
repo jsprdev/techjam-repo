@@ -6,23 +6,23 @@ Recommendations.
 A multi-turn shopping agent that finds a hidden target product in a frozen 50,000 item
 Amazon catalog by talking to a simulated customer, in at most ten turns.
 
-**Current score: 0.8522 TechnicalScore** on all 200 public sessions, measured through the
+**Current score: 0.849765 TechnicalScore** on all 200 public sessions, measured through the
 official harness, against a 0.107 BM25 baseline. Runs fully offline with no LLM dependency.
 
 | Metric | Value | Weight | Baseline |
 | --- | --- | --- | --- |
-| HitRate@10 | 0.920 | 0.50 | 0.125 |
-| MRR | 0.790 | 0.30 | 0.068 |
-| Efficiency | 0.775 | 0.20 | 0.119 |
-| MTTC | 3.245 | | 9.81 |
-| **TechnicalScore** | **0.8522** | | **0.1067** |
+| HitRate@10 | 0.965 | 0.50 | 0.125 |
+| MRR | 0.630883 | 0.30 | 0.068 |
+| Efficiency | 0.890 | 0.20 | 0.119 |
+| MTTC | 2.10 | | 9.81 |
+| **TechnicalScore** | **0.849765** | | **0.1067** |
 
 | scenario | n | hit@10 | mrr | mttc |
 | --- | --- | --- | --- | --- |
-| buying | 80 | 0.925 | 0.824 | 2.79 |
-| browsing | 80 | 0.925 | 0.708 | 2.95 |
-| intent_override | 30 | 0.900 | 0.900 | 4.67 |
-| boundary | 10 | 0.900 | 0.850 | 5.00 |
+| buying | 80 | 0.9375 | 0.625417 | 1.9125 |
+| browsing | 80 | 0.9875 | 0.561880 | 1.5500 |
+| intent_override | 30 | 0.966667 | 0.840000 | 3.8333 |
+| boundary | 10 | 1.0000 | 0.599286 | 2.8000 |
 
 Every tuning decision was made on the 160 session train split. The 40 session held-out
 slice has not been looked at, and will not be until the final check.

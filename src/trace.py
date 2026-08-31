@@ -34,13 +34,26 @@ class TraceSink:
 
     def __init__(self) -> None:
         self._enabled = False
+        self._detailed = False
         self._traces: list[TurnTrace] = []
 
-    def enable(self) -> None:
+    def enable(self, detailed: bool = False) -> None:
         self._enabled = True
+        self._detailed = detailed
 
     def disable(self) -> None:
         self._enabled = False
+        self._detailed = False
+
+    @property
+    def enabled(self) -> bool:
+        """Whether callers should assemble optional, potentially large traces."""
+        return self._enabled
+
+    @property
+    def detailed(self) -> bool:
+        """Whether callers should assemble diagnostic score breakdowns."""
+        return self._enabled and self._detailed
 
     def clear(self) -> None:
         self._traces.clear()

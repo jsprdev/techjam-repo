@@ -153,13 +153,27 @@ class Agent:
         slots.observe(user_message, turn)
         query = slots.to_query()
         width = self._truncation_width(slots)
-        candidates = self.retriever.retrieve(query, width)
+        candidates = self.retriever.retrieve(
+            query,
+            width,
+            phrases=slots.constraints(),
+        )
         ranked = self.ranker.rank(candidates, slots, slots.profile)
         if not ranked:
             ranked = self._fallback(top_k)
 
         attribute = slots.pick_attribute()
         message = self._phrase(attribute)
+
+        extra = {}
+        if SINK.detailed:
+            extra = {
+                "retrieval_shortlist": [
+                    {"parent_asin": asin, "score": score}
+                    for asin, score in candidates[: self.config.rerank_depth]
+                ],
+                "ranking": self.ranker.explain(candidates, slots, slots.profile),
+            }
 
         SINK.record(
             TurnTrace(
@@ -171,6 +185,7 @@ class Agent:
                 candidate_count=len(candidates),
                 top_recommendations=ranked[:TOP_K],
                 elapsed_ms=(time.perf_counter() - started) * 1000.0,
+                extra=extra,
             )
         )
         return response_module.build(

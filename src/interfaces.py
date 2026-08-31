@@ -14,7 +14,7 @@ Owners:
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, Sequence, runtime_checkable
 
 # A scored catalog item. The only currency passed between modules: keeping it a
 # plain tuple means no module has to import another module's dataclass.
@@ -51,8 +51,17 @@ class Retriever(Protocol):
     organiser may score us with networking disabled.
     """
 
-    def retrieve(self, query: str, k: int) -> list[Candidate]:
+    def retrieve(
+        self,
+        query: str,
+        k: int,
+        phrases: Sequence[str] = (),
+    ) -> list[Candidate]:
         """Return up to `k` candidates, best first.
+
+        `phrases` preserves the disclosed constraint boundaries that are lost
+        in the flattened query. Implementations may use them as soft evidence,
+        but must never hard-filter candidates from them.
 
         `k` is the truncation width chosen by the caller and varies per turn:
         narrow on the Buying track, wide on Browsing. Returning fewer than `k`

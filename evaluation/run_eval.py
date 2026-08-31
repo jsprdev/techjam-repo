@@ -92,6 +92,7 @@ def run(
     which: str,
     config: Config,
     trace_path: Path | None,
+    detailed_traces: bool = False,
 ) -> dict[str, Any]:
     sessions = load_sessions(dataset_path)
     train, holdout = split(sessions, config)
@@ -107,7 +108,7 @@ def run(
     catalog_ids, categories, products = catalog_index(catalog_path)
 
     SINK.clear()
-    SINK.enable()
+    SINK.enable(detailed=detailed_traces)
     started = time.perf_counter()
     result = evaluate(agent, chosen, catalog_ids, categories, products)
     wall_seconds = time.perf_counter() - started

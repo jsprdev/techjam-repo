@@ -42,7 +42,7 @@ def test_the_sentinel_is_not_swallowed_by_the_fallback(agent, profile, no_networ
     silently stopped testing anything."""
     import src.retrieval.baseline as baseline
 
-    def touch(self, query, k):
+    def touch(self, query, k, phrases=()):
         raise NetworkTouched("pretending to call out")
 
     original = baseline.TfidfRetriever.retrieve

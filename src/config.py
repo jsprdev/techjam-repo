@@ -29,12 +29,20 @@ class Config:
     weight_categories: float = 2.0
     weight_description: float = 1.0
     weight_store: float = 1.5
+    # Details holds sparse but sometimes decisive catalog phrases. Keep its
+    # default modest so logistics metadata cannot overpower richer text fields.
+    weight_details: float = 1.0
 
-    # Multiplier applied when a whole disclosed phrase appears verbatim in a
+    # Reranker multiplier for a whole disclosed phrase appearing verbatim in a
     # product's text. The customer quotes the target's own record, so exact
     # phrase agreement is the single strongest signal available. Set to 1.0 to
     # disable and measure the difference.
     exact_phrase_boost: float = 4.0
+
+    # Retrieval-stage phrase evidence. Unlike the reranker boost above, this
+    # affects who survives into the shortlist, so exact customer quotations can
+    # promote the target before candidate truncation.
+    retrieval_exact_phrase_boost: float = 2.0
 
     # ---- dialogue, role 2 --------------------------------------------------
     # Weight decay applied to a constraint per turn since it was last

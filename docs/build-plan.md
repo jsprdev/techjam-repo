@@ -1,4 +1,4 @@
-# Build plan: four roles, five days
+# Build plan: current checkpoint
 
 Companion to `phase0-findings.md`, which carries the evidence for every claim here.
 Rendered version: the team artifact linked in the project chat.
@@ -17,6 +17,56 @@ somebody would otherwise have done.
 3. **Asking is free.** The evaluator checks `recommendations` for a hit before it reads
    `ask_attribute`, so one turn carries both. There is no ask-versus-recommend tradeoff.
 
+## Current implementation checkpoint: field-aware retrieval
+
+The retrieval checkpoint is on `codex/field-aware-retrieval` and is ready to push for
+collaboration. It is not ready to merge into `main` as the final retrieval setting.
+
+Completed work:
+
+- Separate in-memory TF-IDF indexes for title, features, categories, description, store,
+  and details, blended with the weights in `Config`.
+- Optional disclosed phrase evidence passed through the retriever interface and applied as
+  a soft, whole-phrase score before candidate truncation.
+- Separate retrieval and reranker phrase-boost settings, sweep-cache updates, and focused
+  field, phrase, and agent integration tests.
+- 54 tests, offline verification, and the query-degeneracy check pass.
+
+Full public-set measurement for the branch's configured default:
+
+| Metric | Previous pooled retrieval | Merged retrieval branch |
+| --- | ---: | ---: |
+| TechnicalScore | 0.7889 | **0.849765** |
+| HitRate@10 | 0.8600 | **0.9650** |
+| MRR | **0.7367** | 0.630883 |
+| MTTC | 4.11 | **2.10** |
+
+This raises coverage and reaches a converting top ten much earlier, but it lowers MRR by
+placing the target farther down the first successful list. The merged ask policy and
+`rerank_depth=200` improve MTTC further, but MRR remains the active precision problem.
+
+## MRR diagnostic checkpoint
+
+The branch also contains a train-only ranking diagnostic (`evaluation/rank_diagnostics.py`).
+It records the retrieval shortlist and deterministic reranker components only when
+explicitly requested by the offline evaluator; it does not change the public `Agent`
+response or the production scoring path.
+
+On the 160-session training split with retrieval phrase boosting set to zero (the
+strongest comparable configuration tested), the target appeared in a converting top ten
+in 144 sessions. Reranking improved its mean position from 33.26 in the retrieval
+shortlist to 1.97, promoting it in 118 sessions and demoting it in only three. Where the
+target still finished below first, the leading candidate's mean advantage was dominated by
+the popularity prior (+0.2136); retrieval contributed only +0.0442 and rating and phrase
+components were effectively neutral.
+
+The first deliberately narrow experiment, a small deterministic score for longer exact
+constraints, was swept from 0 through 4 on an initial 40 training sessions. It did not
+change any rank or metric, so it was rejected and not retained in the scoring path. Do not
+globally reduce popularity, add a second catalog-wide index, or inspect the holdout before
+a promising feature is found. The latter would raise the current approximately 937 MB peak
+memory without an announced memory limit.
+
 ## Score ownership
 
 | Role | Owns | Weight |
@@ -28,23 +78,23 @@ somebody would otherwise have done.
 
 ## Role 1: Retrieval
 
-Owns `src/retrieval/`, `src/catalog.py`. The index and the query. Weighted matching over
-title, features, description, categories and store, with heavy boosting for exact phrase
-hits, because the simulated customer speaks in phrases copied verbatim out of the target
-product's own record. Also owns the query builder and the truncation width that narrows on
-Buying and widens on Browsing.
+Owns `src/retrieval/`, `src/catalog.py`. The index uses weighted matching over title,
+features, description, categories, store, and details. `SlotState` owns query construction;
+the agent chooses the Buying/Browsing truncation width.
 
-- Day 1: ship a working retriever before tuning anything, so roles 2 and 3 are unblocked.
-- Done when: recall@10 above 75% and recall@1 above 55% with full constraints, on the
-  training slice only.
+The field-aware index and retrieval-stage phrase evidence are implemented. The remaining
+task is precision calibration: keep the candidate coverage gain while handing Role 3 a
+shortlist whose strongest lexical and phrase matches rank first.
+
+- Retain a retrieval change only when it meets the checkpoint acceptance gate on the training
+  slice and preserves the offline, memory, and interface constraints.
 - Never: dense embeddings, external vector stores, anything that downloads weights.
 
 ## Role 2: Dialogue
 
-Owns `src/state/`, `src/policy/`. Slots that accumulate, get overridden and decay. Buying
-versus Browsing routing per turn. Above all, choosing which attribute to ask each turn so
-constraints come out as fast as possible. The hard ten turn cap lives here and must be
-enforced in our code, never left to the evaluator.
+Owns `src/state/`. Slots accumulate, get overridden and decay; the agent routes Buying versus
+Browsing per turn. The current branch already reaches 2.10 overall MTTC, so dialogue is not
+the immediate blocker. Preserve the ten-turn cap and do not trade away the retrieval gain.
 
 Know this before designing the policy:
 
@@ -54,27 +104,26 @@ Know this before designing the policy:
 - Override sessions flip at turn 3 or 4, and hits before the flip are not counted. Those
   thirty sessions have a floor of three turns.
 
-- Done when: MTTC below 4 overall, and override sessions hit within two turns of the flip.
+- Measure any dialogue change against the train split and retain it only if it preserves the
+  current retrieval and ranking safeguards.
 - Never: hard filtering. Demote non-matching items, never delete them.
 
 ## Role 3: Ranking and agent shell
 
-Owns `src/agent.py`, `src/rank/`, `src/language/`. Two jobs. First the shell: the `Agent`
-class the evaluator imports, schema conformance, usage reporting, and a guarantee that
-nothing ever raises or runs past turn ten. A crash costs a whole session. Second the
-reranker, which turns 67% at rank ten into a high score at rank one using deterministic
-features: exact phrase overlap, category path agreement, popularity, rating, price band. An
-optional LLM rerank sits behind a flag that defaults to off.
+Owns `src/agent.py`, `src/rank/`, `src/language/`. The shell must remain contract-safe and
+the reranker is the active workstream: it needs to preserve the retrieval coverage gain
+while improving rank-one precision. Current diagnostic evidence points to popularity winning
+otherwise-close comparisons; inspect field-level constraint matches before adding a narrow,
+soft tie-breaker. An optional LLM rerank remains disabled by default.
 
-- Priority: a valid, never-crashing agent running end to end on day 1.
-- Done when: zero exceptions across all 200 sessions, MRR above 0.45, and the whole system
-  runs with the network unplugged.
+- Done when: a train-validated configuration meets the checkpoint acceptance gate without
+  lowering overall HitRate@10 or MRR, and the system remains offline-safe.
 - Never: make any LLM call mandatory, or put one on the critical path.
 
 ## Role 4: Platform and measurement
 
 Owns `evaluation/`, `src/config.py`, `src/interfaces.py`, `requirements.txt`, `README.md`.
-Built first because the other three cannot tune without it. Five technical deliverables:
+The required measurement stack is already in place:
 
 1. One command evaluation wrapper with per-scenario breakdown and per-session traces.
 2. A config sweep harness, so tuning is systematic rather than three people guessing.
@@ -82,33 +131,16 @@ Built first because the other three cannot tune without it. Five technical deliv
 4. A contract test running the agent against the official evaluator on every merge.
 5. The offline verification rig proving the system survives with the network pulled.
 
-The submission stacks on top, and stacks cleanly because this person already holds every
-number the writeup needs to quote. Platform work front-loads onto days 1 and 2, which is
-what makes room for the writeup on days 4 and 5.
+Keep the 40-session held-out slice reserved until feature freeze. Platform work is complete
+when a clean clone reproduces the score and the submission bundle is ready.
 
-- Hold out 40 of the 200 sessions on day 1. Nobody tunes against them.
-- Done when: any teammate runs one command and gets a per-scenario table, a clean clone
-  reproduces the score, and the submission bundle exists 24 hours before the deadline.
+## Current interfaces
 
-## Five days
-
-| Day | Focus | Gate |
-| --- | --- | --- |
-| 1 | Freeze the seams, unblock everybody | A full 200 session run produces a number |
-| 2 | First real system | Score beats the 0.107 baseline |
-| 3 | Tune against real numbers | Score above 0.40, every scenario bucket examined |
-| 4 | Feature freeze at midday, integration and robustness | Zero crashes, verified offline run |
-| 5 | Package and record | Submitted with time to spare |
-
-## Interfaces frozen on day 1
-
-Four people editing one package for five days is where teams lose their weekend. Module
-ownership plus these signatures, agreed before anyone writes logic, is what prevents it.
-Anyone may propose a change, nobody changes one silently. Definitions live in
-`src/interfaces.py`.
+Definitions live in `src/interfaces.py`. Preserve these seams unless a coordinated change is
+needed across the owning modules.
 
 - `Candidate`, a `parent_asin` and a score. The only currency between modules.
-- `Retriever.retrieve(query, k) -> list[Candidate]`, owned by role 1.
+- `Retriever.retrieve(query, k, phrases=()) -> list[Candidate]`, owned by role 1.
 - `SlotState.to_query() -> str`, owned by role 2. The one seam where dialogue feeds retrieval.
 - `Ranker.rank(candidates, slots, profile) -> list[str]`, owned by role 3.
 - `Agent.respond(session_id, user_message, turn, top_k) -> dict`, fixed by the organiser.
