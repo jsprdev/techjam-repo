@@ -1,23 +1,25 @@
 # Conversational Shopping Agent
 
-TikTok TechJam 2026, Problem Statement 4: Shopping Copilot, AI Conversational Search and
-Recommendations.
+**TikTok TechJam 2026, Problem Statement 4: Shopping Copilot, AI Conversational Search and
+Recommendations.**
 
-A multi-turn shopping agent that finds a hidden target product in a frozen 50,000 item
-Amazon catalog by talking to a simulated customer, in at most ten turns.
+A shopper arrives without knowing exactly what they want. This agent finds the one product
+they will buy, out of a frozen 50,000 item Amazon catalog, by holding a conversation with
+them and asking for the detail that narrows the field fastest. It has at most ten turns, it
+runs entirely in memory, and it needs no network access at scoring time.
 
-**Current score: 0.893583 TechnicalScore** on all 200 public sessions, measured through the
-official harness, against a 0.107 BM25 baseline. Runs fully offline: the LLM ranking judgment
-is computed ahead of time and read from a committed artefact, so the scored run makes no
-network call and reports zero tokens.
+| | Ours | Organiser baseline |
+| --- | --- | --- |
+| **TechnicalScore** | **0.893583** | 0.1067 |
+| Coverage, HitRate@10 | 0.975 | 0.125 |
+| Precision, MRR | 0.7796 | 0.068 |
+| Efficiency | 0.861 | 0.119 |
+| Mean turns to conversion | 2.39 | 9.81 |
+| Token usage and cost | 0 tokens, $0.00 | |
 
-| Metric | Value | Weight | Baseline |
-| --- | --- | --- | --- |
-| HitRate@10 | 0.975 | 0.50 | 0.125 |
-| MRR | 0.7796 | 0.30 | 0.068 |
-| Efficiency | 0.861 | 0.20 | 0.119 |
-| MTTC | 2.39 | | 9.81 |
-| **TechnicalScore** | **0.893583** | | **0.1067** |
+Measured through the organiser's own evaluator, unmodified, on all 200 public sessions.
+A fresh clone reproduces it, and the score is machine independent, verified across three
+Python and numpy combinations.
 
 | scenario | n | hit@10 | mrr | mttc |
 | --- | --- | --- | --- | --- |
@@ -26,8 +28,85 @@ network call and reports zero tokens.
 | intent_override | 30 | 0.967 | 0.917 | 4.03 |
 | boundary | 10 | 1.000 | 0.817 | 3.30 |
 
-Every tuning decision was made on the 160 session train split. The 40 session held-out
-slice has not been looked at, and will not be until the final check.
+---
+
+## One conversation, with every pillar labelled
+
+This is real output from a real session, printed straight from the run traces. Each line
+is tagged with the pillar of the problem statement it answers.
+
+```text
+session public_0012    scenario: browsing
+
+TURN 1  customer: I'm looking for Women Dresses, but I'm still exploring.
+   I   route=browsing  pool=800
+   II  pool_overloaded=True  asks=feature  pivot=False
+   III belief_entropy=0.9211  retired=none  distilled=0.4727
+   IV  target_rank=outside top 10
+
+TURN 2  customer: For that, what matters is: Imported; Wrap closure.
+   I   route=buying  pool=200
+   II  pool_overloaded=False  asks=material  pivot=False
+   III belief_entropy=0.8621  retired=none  distilled=0.4571
+   IV  target_rank=1
+```
+
+The shopper opens without a target, so the router sends the turn down the Browsing track and
+widens the candidate pool to 800. The pool comes back overloaded, which is the
+over-generality condition in Pillar II, so the agent asks which feature matters instead of
+returning a weak list. The answer moves the turn to the Buying track, the pool narrows to
+200, and the target product arrives at rank one.
+
+The same view on an Intent Override session shows the state machine detecting the pivot and
+the target surviving it:
+
+```text
+session public_0002    scenario: intent_override
+
+TURN 2  customer: For that, what matters is: Imported; Buckle closure.
+   II  pool_overloaded=True  asks=material  pivot=False
+   IV  target_rank=3
+
+TURN 3  customer: Actually, ignore my earlier preference. What I need is: leather.
+   II  pool_overloaded=False  asks=color  pivot=True
+   IV  target_rank=2
+```
+
+---
+
+## What we built, pillar by pillar
+
+| Pillar | Requirement | Where it lives | Evidence |
+| --- | --- | --- | --- |
+| **I** | Dual-track routing, Buying against Browsing | `src/policy/intent.py` | 1.000 turn-one accuracy, `evaluation/intent_audit.py` |
+| **I** | Multi-route retrieval, in memory, no external store | `src/retrieval/baseline.py` | pooled and per-field TF-IDF, both swept |
+| **I** | LLM semantic ranking | `offline/build_semantic_prior.py`, `src/semantic.py` | model runs offline, result committed as an artefact |
+| **II** | Dynamic state machine, information accumulation | `src/state/slots.py` | `tests/test_policy.py` |
+| **II** | Intent Override, slot rewriting | `src/state/slots.py` `_pivot` | 30 of 30 sessions audited, `evaluation/override_audit.py` |
+| **II** | Retrieval cutoff on over-generality | `src/policy/commit.py` | fires in 79 of 160 train sessions |
+| **II** | Proactive structured clarification | `src/state/slots.py`, `src/language/phrase.py` | ask order set by measured yield, `evaluation/ask_yield.py` |
+| **III** | Personalised context distillation | `src/state/slots.py` `to_query`, `src/state/session.py` | conversations distilled to 0.754 of raw length |
+| **III** | Belief updated as evidence arrives | `src/state/belief.py` | mean entropy 0.896 across all turns |
+| **III** | Runtime adaptation of its own guidance logic | `src/state/slots.py` `_exhausted` | an unproductive attribute retired in 23 sessions |
+| **IV** | Coverage, precision, efficiency, per scenario | `evaluation/run_eval.py` | the tables above |
+| **IV** | Generalisation beyond the tuning set | `evaluation/splits.py` | 40 held-out sessions, spent once, 0.8801 |
+
+Three requirements were built, measured, and then deliberately left switched off or
+implemented differently from the wording of the brief. Those decisions and the numbers
+behind them are in [Deliberate deviations from the brief](#deliberate-deviations-from-the-brief).
+
+---
+
+## Reproduce the conversation views
+
+```bash
+python3 evaluation/run_eval.py --split train --traces /tmp/traces.json
+```
+
+`docs/demo-script-v2.md` carries the two short scripts that render the labelled views above
+from that trace file.
+
+---
 
 ## Setup
 
