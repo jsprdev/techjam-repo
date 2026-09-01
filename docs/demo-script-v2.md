@@ -16,12 +16,17 @@ that demonstrates your solution working end-to-end". Target **2 minutes 30**.
 ```bash
 git pull origin main
 pip install -r requirements.txt
-python3 evaluation/run_eval.py --split train --traces /tmp/traces.json
+python3 evaluation/run_eval.py --split train --traces artifacts/traces.json
 ```
 
 The trace run takes about five minutes and produces the file the scenes read.
-Save both scripts at the end of this file to `/tmp/scene.py` and
-`/tmp/pillar3.py`, then dry run each one and clear the terminal.
+Save both scripts at the end of this file to `artifacts/scene.py` and
+`artifacts/pillar3.py`, then dry run each one and clear the terminal.
+
+Everything lives under `artifacts/`, which the repository already ignores, so
+nothing here gets committed and the paths work the same on macOS, Linux and
+Windows. Run every command from the repository root, because the scripts open
+`artifacts/traces.json` and the public session file by relative path.
 
 Time one evaluator run on the recording machine before fixing scene lengths. It
 takes about 25 seconds on an Apple silicon laptop and several minutes on a
@@ -54,7 +59,7 @@ Narration, 55 words:
 ## Scene 2. Pillars I and II, working. 45 seconds.
 
 ```bash
-python3 /tmp/scene.py public_0012
+python3 artifacts/scene.py public_0012
 ```
 
 Verified output:
@@ -95,7 +100,7 @@ Narration, 120 words:
 ## Scene 3. Pillar II, the shopper changes their mind. 40 seconds.
 
 ```bash
-python3 /tmp/scene.py public_0002
+python3 artifacts/scene.py public_0002
 ```
 
 Verified output:
@@ -127,7 +132,7 @@ Narration, 105 words:
 ## Scene 4. Pillar III, self-evolution. 25 seconds.
 
 ```bash
-python3 /tmp/pillar3.py
+python3 artifacts/pillar3.py
 ```
 
 Verified output:
@@ -180,12 +185,12 @@ Leave the run uncut. Narration, 115 words:
 
 ## The two scripts
 
-`/tmp/scene.py`:
+`artifacts/scene.py`:
 
 ```python
 import json, sys
 sample_id = sys.argv[1] if len(sys.argv) > 1 else "public_0012"
-traces = json.load(open("/tmp/traces.json", encoding="utf-8"))
+traces = json.load(open("artifacts/traces.json", encoding="utf-8"))
 session = next(r for r in traces if r["sample_id"] == sample_id)
 with open("techjam-conversational-search/data/public_set.jsonl", encoding="utf-8") as f:
     samples = {r["sample_id"]: r for r in map(json.loads, f)}
@@ -204,11 +209,11 @@ for t in session["turns"]:
     print(f"   IV  target_rank={rank}\n")
 ```
 
-`/tmp/pillar3.py`:
+`artifacts/pillar3.py`:
 
 ```python
 import json
-traces = json.load(open("/tmp/traces.json", encoding="utf-8"))
+traces = json.load(open("artifacts/traces.json", encoding="utf-8"))
 sessions = len(traces)
 retired = sum(1 for r in traces if r["turns"][-1]["extra"]["retired"])
 pivots = sum(1 for r in traces if any(t["extra"]["pivot"] for t in r["turns"]))
