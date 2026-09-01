@@ -116,6 +116,18 @@ class Agent:
             session_id=str(session_id), slots=slots
         )
 
+    def constraints_for(self, session_id: str) -> list[str]:
+        """What the agent currently believes it has been told, in order.
+
+        Read only, and not on the scored path: the evaluator never calls it.
+        It exists so `demo/show.py` can print the session state as it grows,
+        because on a vague opener the popularity prior holds the visible top of
+        the list steady and a viewer otherwise cannot tell whether the agent
+        heard the last message.
+        """
+        session = self._sessions.get(str(session_id))
+        return list(session.slots.constraints()) if session is not None else []
+
     def respond(
         self,
         session_id: str,
