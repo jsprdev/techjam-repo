@@ -76,29 +76,79 @@ loaded cloud instance.
 
 ---
 
-## Scene 1. The four pillars. 20 seconds.
+## Scene plan
+
+| Scene | Length | What it does |
+| --- | --- | --- |
+| 1 | 40 s | What we made, and the idea the build was organised around |
+| 1b | 25 s | The five stages, optional if time is tight |
+| 2 | 45 s | One real conversation, found in two turns |
+| 3 | 40 s | The shopper changes their mind and the agent recovers |
+| 4 | 25 s | How it adapts across 160 conversations |
+| 5 | 40 s | The score, and the sessions we held back |
+
+About three minutes with scene 1b, two minutes thirty without it. Narration runs
+at roughly 150 words per minute.
+
+The pillar labels stay on screen through scenes 2 to 4, so a judge can follow
+the brief's four pillars while the narration talks about the product.
+
+---
+
+## Scene 1. What we made. 40 seconds.
 
 Title card:
 
 ```text
-Conversational Shopping Agent
+Conversational Shopping Copilot
 TikTok TechJam 2026, Problem Statement 4
 
-I    Intent routing and hybrid retrieval pipeline
-II   Multi-turn dialog strategy
-III  Self-evolution through context programming
-IV   Coverage, precision and efficiency
+A shopper who half knows what they want, and an agent
+that asks the one question that finds it fastest.
 ```
 
-Narration, 55 words:
+Narration, 150 words:
 
-> The brief describes shopping search that relies on static keyword matching and
-> misses how people actually shop. It asks for four things: a pipeline that
-> routes on intent, a dialog strategy that survives a shopper changing their
-> mind, an agent that adapts as the conversation goes on, and measurement across
-> coverage, precision and efficiency. We will take them in order.
+> Most product search assumes you can already describe what you want. Real
+> shopping works the other way around. You know roughly what you are after, you
+> recognise the right thing when you see it, and the words come later.
+>
+> So we built a shopping copilot that holds a conversation. It reads what you
+> have told it so far, works out what it still does not know, and asks the one
+> question that narrows fifty thousand products fastest.
+>
+> That idea drove the whole build. We measured which questions a shopper can
+> actually answer before writing any policy, and the answer reshaped the system.
+> Asking about a feature gets a useful reply in ninety six percent of
+> conversations. Asking about size gets one in twenty two. Three of the ten
+> attributes we were allowed to ask about can never be answered at all, so every
+> turn spent on them is a turn thrown away.
+>
+> So the agent asks in that order, and it stops asking anything that stops paying.
 
-## Scene 2. Pillars I and II, working. 45 seconds.
+Say over the title card, then cut straight to the product working.
+
+## Scene 1b. How it is put together. 25 seconds.
+
+Optional if you have room. Otherwise fold the first two sentences into Scene 2.
+
+```text
+route  ->  retrieve  ->  believe  ->  decide  ->  ask
+```
+
+Narration, 85 words:
+
+> Underneath, every turn runs the same five stages, and the shape of each one is
+> chosen fresh rather than fixed at the start.
+>
+> The agent decides whether this turn is browsing or buying, pulls candidates
+> from an in memory index over the catalog, scores them into a belief about which
+> product is meant, checks whether that belief is decided enough to answer, and
+> if it is not, picks the question worth asking.
+>
+> Nothing runs on a server and nothing calls a model while it is being scored.
+
+## Scene 2. One real conversation. 45 seconds.
 
 ```bash
 python3 artifacts/scene.py public_0012
@@ -122,24 +172,24 @@ TURN 2  customer: For that, what matters is: Imported; Wrap closure.
    IV  target_rank=1
 ```
 
-Narration, 120 words:
+Narration, 130 words:
 
-> Every line here is labelled with the pillar it answers.
+> Here is that idea running. The labels down the left mark which of the brief's
+> four pillars each line belongs to, so you can follow both at once.
 >
-> Pillar One is the routing. The shopper opens without a clear target, so the
-> agent routes this turn to the Browsing track and widens the candidate pool to
-> eight hundred. Retrieval runs entirely in memory over fifty thousand products
-> with no database and no network.
+> The shopper opens without a clear target, so the agent treats the turn as
+> browsing and casts a wide net, eight hundred candidates out of fifty thousand.
+> The pool comes back crowded, meaning nothing has separated yet, and this is
+> where most systems return a weak top ten and hope. Instead the agent asks about
+> a feature, which is the question the measurement said pays best.
 >
-> Pillar Two is the dialog strategy. The candidate pool comes back overloaded,
-> which is the over-generality condition in the brief. The agent responds by
-> asking which feature matters rather than returning a weak top ten.
+> The shopper answers. The agent now reads the turn as buying, tightens to two
+> hundred candidates, and the product they are actually looking for moves from
+> nowhere to first place.
 >
-> The shopper answers, the router moves the turn to the Buying track, the pool
-> narrows to two hundred, and the target product rises from outside the top ten
-> to rank one.
+> One question, and the right answer out of fifty thousand.
 
-## Scene 3. Pillar II, the shopper changes their mind. 40 seconds.
+## Scene 3. When the shopper changes their mind. 40 seconds.
 
 ```bash
 python3 artifacts/scene.py public_0002
@@ -171,7 +221,7 @@ Narration, 105 words:
 > instead, because we measured that in thirty of thirty of these sessions it
 > remains true of the product the shopper eventually buys.
 
-## Scene 4. Pillar III, self-evolution. 25 seconds.
+## Scene 4. It adapts as the conversation goes on. 25 seconds.
 
 ```bash
 python3 artifacts/pillar3.py
@@ -200,7 +250,7 @@ Narration, 90 words:
 > raw length before querying, and it carries a belief distribution over the
 > catalog that it updates every single turn.
 
-## Scene 5. Pillar IV, the metrics. 40 seconds.
+## Scene 5. Does it actually work. 40 seconds.
 
 ```bash
 cd techjam-conversational-search
