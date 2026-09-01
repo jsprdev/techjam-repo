@@ -20,8 +20,50 @@ python3 evaluation/run_eval.py --split train --traces artifacts/traces.json
 ```
 
 The trace run takes about five minutes and produces the file the scenes read.
-Save both scripts at the end of this file to `artifacts/scene.py` and
-`artifacts/pillar3.py`, then dry run each one and clear the terminal.
+Then create the two helper scripts. Copy this whole block and paste it once:
+
+```bash
+mkdir -p artifacts
+python3 - <<'MAKE'
+from pathlib import Path
+Path("artifacts/scene.py").write_text('''import json, sys
+sample_id = sys.argv[1] if len(sys.argv) > 1 else "public_0012"
+traces = json.load(open("artifacts/traces.json", encoding="utf-8"))
+session = next(r for r in traces if r["sample_id"] == sample_id)
+with open("techjam-conversational-search/data/public_set.jsonl", encoding="utf-8") as f:
+    samples = {r["sample_id"]: r for r in map(json.loads, f)}
+target = samples[sample_id]["ground_truth"]["parent_asin"]
+print(f"session {sample_id}    scenario: {samples[sample_id]['scenario_type']}\\n")
+for t in session["turns"]:
+    e = t["extra"]
+    top = t["top_recommendations"]
+    rank = top.index(target) + 1 if target in top else "outside top 10"
+    print(f"TURN {t['turn']}  customer: {t['user_message']}")
+    print(f"   I   route={e['track']}  pool={e['width']}")
+    print(f"   II  pool_overloaded={e['overloaded']}  asks={t['ask_attribute']}  pivot={e['pivot']}")
+    print(f"   III belief_entropy={e['entropy']}  retired={e['retired'] or 'none'}  distilled={e['compression']}")
+    print(f"   IV  target_rank={rank}\\n")
+''')
+Path("artifacts/pillar3.py").write_text('''import json
+traces = json.load(open("artifacts/traces.json", encoding="utf-8"))
+sessions = len(traces)
+retired = sum(1 for r in traces if r["turns"][-1]["extra"]["retired"])
+pivots = sum(1 for r in traces if any(t["extra"]["pivot"] for t in r["turns"]))
+overload = sum(1 for r in traces if any(t["extra"]["overloaded"] for t in r["turns"]))
+comp = [t["extra"]["compression"] for r in traces for t in r["turns"]]
+ents = [t["extra"]["entropy"] for r in traces for t in r["turns"]]
+print(f"train sessions                                  {sessions}")
+print(f"sessions that retired an unproductive attribute {retired}")
+print(f"sessions where the over-generality cutoff fired {overload}")
+print(f"sessions that detected an intent override       {pivots}")
+print(f"mean context distillation ratio                 {sum(comp)/len(comp):.3f}")
+print(f"mean belief entropy across all turns            {sum(ents)/len(ents):.3f}")
+''')
+print("created artifacts/scene.py and artifacts/pillar3.py")
+MAKE
+```
+
+Then dry run each one and clear the terminal.
 
 Everything lives under `artifacts/`, which the repository already ignores, so
 nothing here gets committed and the paths work the same on macOS, Linux and
