@@ -10,15 +10,13 @@
 ![HitRate@10](https://img.shields.io/badge/HitRate%4010-0.975-2ea44f?style=flat-square)
 ![Held out](https://img.shields.io/badge/held--out-0.8801-2ea44f?style=flat-square)
 ![Tests](https://img.shields.io/badge/tests-97%20passing-2ea44f?style=flat-square)
-![Offline](https://img.shields.io/badge/network-not%20required-blue?style=flat-square)
-![Tokens](https://img.shields.io/badge/tokens-0-blue?style=flat-square)
+
 
 </div>
 
 A shopper arrives without knowing exactly what they want. This agent finds the one product
 they will buy, out of a frozen 50,000 item Amazon catalog, by holding a conversation and
-asking for the detail that narrows the field fastest. It has ten turns at most, it runs
-entirely in memory, and it needs no network access while it is being scored.
+asking for the detail that narrows the field fastest. 
 
 | | Ours | Organiser baseline |
 | :--- | ---: | ---: |
